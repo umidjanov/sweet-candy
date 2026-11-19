@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sweetmarket_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: sweetmarket
+      POSTGRES_PASSWORD: sweetmarket_pass
+      POSTGRES_DB: sweetmarket_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - sweetmarket_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sweetmarket -d sweetmarket_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sweetmarket_pgdata:
+    driver: local
+

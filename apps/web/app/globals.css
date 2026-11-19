@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-pink: #E4728E;
+  --dark-pink: #C45874;
+  --light-pink: #FFF1F5;
+  --cream: #FFF9F5;
+  --bg: #FCF9F7;
+  --white: #FFFFFF;
+  --text-main: #2D2528;
+  --text-secondary: #85777D;
+  --border: #F1E5E9;
+  --chocolate: #70452F;
+  --caramel: #D99A52;
+  --success: #269B69;
+  --warning: #E7A23B;
+  --error: #DC5151;
+}
+
+/* Sweet CANDY playful rounded brand lettering matching the uploaded logo */
+.font-candy {
+  font-family: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Quicksand', 'Nunito', system-ui, sans-serif;
+}
+
+.candy-word-sweet {
+  color: #EA829C;
+  -webkit-text-stroke: 0.5px #B8536E;
+  text-shadow: 0 1px 0 rgba(184, 83, 110, 0.18);
+}
+
+.candy-word-candy {
+  color: #C85F7A;
+  -webkit-text-stroke: 0.5px #9F425B;
+  text-shadow: 0 1px 0 rgba(159, 66, 91, 0.2);
+}
+
+html {
+  max-width: 100vw;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-main);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Prevent horizontal blowouts on flex/grid children across all viewports */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+span,
+a,
+button {
+  overflow-wrap: break-word;
+}
+
+/* Smooth touch scrolling for tables & horizontal strips on iPhone/Samsung/Poco */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent iOS Safari auto-zoom when focusing inputs on mobile phones */
+@media (max-width: 767px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="number"],
+  input[type="url"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Narrow phones & Galaxy Fold cover screen (<= 359px) */
+@media (max-width: 359px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Smartwatches (Apple Watch 41mm/45mm/Ultra, Galaxy Watch 4/5/6/Ultra: 180px - 280px) */
+@media (max-width: 280px) {
+  html {
+    font-size: 12px;
+  }
+
+  .rounded-3xl {
+    border-radius: 1rem !important;
+  }
+
+  .p-8,
+  .p-10,
+  .p-12 {
+    padding: 0.75rem !important;
+  }
+
+  .p-6 {
+    padding: 0.65rem !important;
+  }
+
+  .px-6,
+  .px-8 {
+    padding-left: 0.6rem !important;
+    padding-right: 0.6rem !important;
+  }
+}
+
+/* Ultra-compact smartwatch displays (<= 220px) */
+@media (max-width: 220px) {
+  html {
+    font-size: 10.5px;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FFF0F5;
+}
+::-webkit-scrollbar-thumb {
+  background: #E85D8E;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C83F72;
+}
