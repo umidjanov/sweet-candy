@@ -151,11 +151,22 @@ export class TelegramBotRunner {
   }
 
   /**
+   * Helper to resolve the active HTTPS Web App URL
+   */
+  private static getWebAppBaseUrl(): string {
+    const url = env.NEXT_PUBLIC_APP_URL || 'https://sweet-candy-ten.vercel.app';
+    if (!url.startsWith('https://')) {
+      return 'https://sweet-candy-ten.vercel.app';
+    }
+    return url.replace(/\/+$/, '');
+  }
+
+  /**
    * Sets the permanent Web App button in the Telegram chat input
    */
   private static async setupMenuButton(token: string) {
     try {
-      const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const webAppUrl = this.getWebAppBaseUrl();
       await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -293,7 +304,7 @@ export class TelegramBotRunner {
    * Sends the primary Sweet CANDY welcome message with ReplyKeyboard
    */
   private static async sendWelcomeMessage(token: string, chatId: number, firstName: string) {
-    const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const webAppUrl = this.getWebAppBaseUrl();
 
     const welcomeText =
       `🍭 *Sweet CANDY — Shirinliklar va Tortlar do‘koni*\n\n` +
@@ -340,7 +351,7 @@ export class TelegramBotRunner {
    * Sends direct Web App link button
    */
   private static async sendWebAppButton(token: string, chatId: number) {
-    const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const webAppUrl = this.getWebAppBaseUrl();
     const text =
       `🧁 *Sweet CANDY Ilovasi*\n\n` +
       `Sweet CANDY to‘liq onlayn ilovasini ochish va buyurtma berish uchun quyidagi tugmani bosing:`;
@@ -360,7 +371,7 @@ export class TelegramBotRunner {
    * Sends products catalog directly in Telegram chat with photos & ordering buttons
    */
   private static async sendProductsCatalog(token: string, chatId: number) {
-    const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const webAppUrl = this.getWebAppBaseUrl();
 
     try {
       const products = await prisma.product.findMany({
@@ -451,7 +462,7 @@ export class TelegramBotRunner {
    * Sends user orders view
    */
   private static async sendMyOrders(token: string, chatId: number) {
-    const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const webAppUrl = this.getWebAppBaseUrl();
 
     const text =
       `📦 *Sizning buyurtmalaringiz*\n\n` +
@@ -475,7 +486,7 @@ export class TelegramBotRunner {
    * Sends seller / confectioner dashboard options
    */
   private static async sendSellerMenu(token: string, chatId: number) {
-    const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const webAppUrl = this.getWebAppBaseUrl();
 
     const text =
       `👨‍🍳 *Qandolatchi va Sotuvchilar kabineti*\n\n` +
@@ -505,7 +516,7 @@ export class TelegramBotRunner {
    * Sends help & contact info
    */
   private static async sendHelpMessage(token: string, chatId: number) {
-    const webAppUrl = env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const webAppUrl = this.getWebAppBaseUrl();
 
     const text =
       `ℹ️ *Sweet CANDY haqida va Yordam*\n\n` +

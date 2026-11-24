@@ -16,8 +16,9 @@ const nextConfig = {
   async rewrites() {
     const backendTarget =
       process.env.BACKEND_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'https://real-dingos-leave.loca.lt';
+      (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+        ? process.env.NEXT_PUBLIC_API_URL
+        : 'https://wesley-bringing-tickets-mai.trycloudflare.com');
     if (backendTarget) {
       const cleanBase = backendTarget.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
       return [

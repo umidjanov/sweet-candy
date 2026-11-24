@@ -1,10 +1,19 @@
 function getApiBase(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+  // If running in browser on HTTPS (e.g. Vercel deployment, Telegram Web App),
+  // localhost cannot be reached due to browser Mixed Content security rules.
+  if (isHttps) {
+    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+      return envUrl.replace(/\/+$/, '');
+    }
+    // High-performance Cloudflare Tunnel connection
+    return 'https://wesley-bringing-tickets-mai.trycloudflare.com/api/v1';
   }
-  // If running in browser on HTTPS (e.g. Vercel deployment), connect to the active backend tunnel
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-    return 'https://real-dingos-leave.loca.lt/api/v1';
+
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
   }
   return 'http://localhost:4000/api/v1';
 }

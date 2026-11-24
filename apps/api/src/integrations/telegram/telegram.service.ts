@@ -143,12 +143,16 @@ export class TelegramService {
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
         `Buyurtmani qabul qilish yoki holatini o'zgartirish uchun quyidagi tugmani bosing 👇`;
 
+      const appUrl = (env.NEXT_PUBLIC_APP_URL && env.NEXT_PUBLIC_APP_URL.startsWith('https://'))
+        ? env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')
+        : 'https://sweet-candy-ten.vercel.app';
+
       const replyMarkup = {
         inline_keyboard: [
           [
             {
               text: '📋 Buyurtmani boshqarish (Web App)',
-              web_app: { url: `${env.NEXT_PUBLIC_APP_URL}/seller/orders/${order.id}` },
+              web_app: { url: `${appUrl}/seller/orders/${order.id}` },
             },
           ],
         ],
