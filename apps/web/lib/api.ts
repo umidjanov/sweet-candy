@@ -2,14 +2,12 @@ function getApiBase(): string {
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
   }
-  // If running in browser on HTTPS (e.g. Vercel deployment), connect to the active tunnel
+  // If running in browser on HTTPS (e.g. Vercel deployment), connect to the active backend tunnel
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-    return 'https://chilly-turkeys-lick.loca.lt/api/v1';
+    return 'https://real-dingos-leave.loca.lt/api/v1';
   }
   return 'http://localhost:4000/api/v1';
 }
-
-const API_BASE = getApiBase();
 
 export class ApiError extends Error {
   code?: string;
@@ -29,8 +27,9 @@ export async function apiClient<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const apiBase = getApiBase();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${API_BASE}${cleanEndpoint}`;
+  const url = `${apiBase}${cleanEndpoint}`;
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
   const headers: Record<string, string> = {

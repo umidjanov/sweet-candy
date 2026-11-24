@@ -17,7 +17,7 @@ const nextConfig = {
     const backendTarget =
       process.env.BACKEND_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      'https://chilly-turkeys-lick.loca.lt';
+      'https://real-dingos-leave.loca.lt';
     if (backendTarget) {
       const cleanBase = backendTarget.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
       return [
