@@ -18,7 +18,7 @@ const nextConfig = {
       process.env.BACKEND_URL ||
       (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
         ? process.env.NEXT_PUBLIC_API_URL
-        : 'https://sweet-candy-api.loca.lt');
+        : 'https://conviction-life-oven-samples.trycloudflare.com');
     if (backendTarget) {
       const cleanBase = backendTarget.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
       return [
