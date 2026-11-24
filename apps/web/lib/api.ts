@@ -8,8 +8,8 @@ function getApiBase(): string {
     if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
       return envUrl.replace(/\/+$/, '');
     }
-    // High-performance Cloudflare Tunnel connection
-    return 'https://wesley-bringing-tickets-mai.trycloudflare.com/api/v1';
+    // Stable secure tunnel connection
+    return 'https://sweet-candy-api.loca.lt/api/v1';
   }
 
   if (envUrl) {
