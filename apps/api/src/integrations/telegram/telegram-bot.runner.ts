@@ -72,17 +72,42 @@ export class TelegramBotRunner {
     this.pollingAbortController = new AbortController();
 
     try {
-      // 1. Verify Bot Token & Get Bot Info
-      const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      const meData = await meRes.json();
+      // 1. Verify Bot Token & Get Bot Info (with 429 retry handling)
+      let botUser: any = null;
+      let consecutive429 = 0;
+      while (!botUser && this.isRunning) {
+        try {
+          const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+          const meData = await meRes.json();
 
-      if (!meData.ok) {
-        console.error('❌ [Telegram Bot] Token noto‘g‘ri yoki Telegram API ulanmadi:', meData.description);
+          if (meData.ok) {
+            botUser = meData.result;
+            break;
+          } else if (meData.error_code === 429) {
+            consecutive429++;
+            const waitSec = consecutive429 > 2 ? 60 : (meData.parameters?.retry_after || 30) + 5;
+            if (consecutive429 > 2) {
+              console.warn(`[Telegram Bot] ⚠️ Telegram ushbu token uchun flood-control (429) qo‘ymoqda. 60 soniya kutilmoqda... (Agar davom etsa, @BotFather orqali token qayta olinadi)`);
+            } else {
+              console.warn(`[Telegram Bot] 429 Telegram cheklovi: ${waitSec} soniya kutilmoqda...`);
+            }
+            await new Promise((r) => setTimeout(r, waitSec * 1000));
+          } else {
+            console.error('❌ [Telegram Bot] Token noto‘g‘ri yoki Telegram API ulanmadi:', meData.description);
+            this.isRunning = false;
+            return;
+          }
+        } catch (e: any) {
+          await new Promise((r) => setTimeout(r, 15000));
+        }
+      }
+
+      if (!botUser) {
+        console.error('❌ [Telegram Bot] Bot ma’lumotlarini olib bo‘lmadi.');
         this.isRunning = false;
         return;
       }
 
-      const botUser = meData.result;
       console.log(`🤖 [Telegram Bot] @${botUser.username} muvaffaqiyatli ishga tushdi!`);
 
       // 2. Configure Telegram Menu Commands
@@ -164,6 +189,10 @@ export class TelegramBotRunner {
               console.error('[Telegram Update Handle Error]:', e);
             });
           }
+        } else if (data.error_code === 429) {
+          const waitSec = data.parameters?.retry_after || 15;
+          console.warn(`[Telegram Bot] 429 Rate limit: ${waitSec} soniya kutilmoqda...`);
+          await new Promise((r) => setTimeout(r, waitSec * 1000));
         } else if (data.error_code === 409) {
           // Conflict: webhook or other polling instance running
           console.warn('[Telegram Bot] 409 Conflict: boshqa bot instansiyasi ishlab turibdi. 5 soniya kutilmoqda...');
