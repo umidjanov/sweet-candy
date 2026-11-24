@@ -42,6 +42,7 @@ export const en = {
     openStore: 'Open Bakery',
     myOrders: 'My Orders',
     favorites: 'Favorites',
+    profile: 'My Profile',
     sellerDashboard: 'Seller Dashboard',
     adminPanel: 'Admin Panel',
     logout: 'Log Out',

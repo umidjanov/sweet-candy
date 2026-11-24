@@ -42,6 +42,7 @@ export const ru = {
     openStore: 'Открыть магазин',
     myOrders: 'Мои заказы',
     favorites: 'Избранное',
+    profile: 'Мой профиль',
     sellerDashboard: 'Кабинет продавца',
     adminPanel: 'Панель администратора',
     logout: 'Выйти',

@@ -120,28 +120,39 @@ export class TelegramService {
         .map((item) => `• ${item.productNameSnapshot} x${item.quantity} (${Number(item.lineTotal).toLocaleString()} ${order.currency})`)
         .join('\n');
 
-      const formattedTotal = Number(order.total).toLocaleString();
-      const formattedDate = new Date(order.requestedDate).toLocaleDateString('en-GB', {
+      const formattedTotal = Number(order.total).toLocaleString('ru-RU');
+      const formattedDate = new Date(order.requestedDate).toLocaleDateString('uz-UZ', {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
       });
 
       const messageText =
-        `🧁 *NEW ORDER — SWEETMARKET*\n` +
+        `🔔 *YANGI BUYURTMA — Sweet CANDY*\n` +
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `*Order ID:* #${order.orderNumber}\n` +
-        `*Customer:* ${order.customerName}\n` +
-        `*Phone:* ${order.customerPhone}\n\n` +
-        `*Items:*\n${itemsSummary}\n\n` +
-        `*Requested Date:* ${formattedDate}\n` +
-        `*Requested Time:* ${order.requestedTime}\n` +
-        `*Delivery Type:* ${order.deliveryType === 'DELIVERY' ? '🚚 Delivery' : '🏪 Pickup'}\n` +
-        (order.deliveryAddress ? `*Address:* ${order.deliveryAddress}\n` : '') +
-        `*Total Price:* ${formattedTotal} ${order.currency}\n` +
-        (order.customerMessage ? `*Customer Note:* "${order.customerMessage}"\n` : '') +
+        `*Buyurtma raqami:* #${order.orderNumber}\n` +
+        `*Xaridor:* ${order.customerName}\n` +
+        `*Telefon:* ${order.customerPhone}\n\n` +
+        `*Buyurtma tarkibi:*\n${itemsSummary}\n\n` +
+        `*Yetkazish sanasi:* ${formattedDate}\n` +
+        `*Yetkazish vaqti:* ${order.requestedTime}\n` +
+        `*Yetkazish turi:* ${order.deliveryType === 'DELIVERY' ? '🚚 Yetkazib berish' : '🏪 Olib ketish'}\n` +
+        (order.deliveryAddress ? `*Yetkazish manzili:* ${order.deliveryAddress}\n` : '') +
+        `*Jami summa:* ${formattedTotal} ${order.currency}\n` +
+        (order.customerMessage ? `*Mijoz izohi:* "${order.customerMessage}"\n` : '') +
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `👉 [Open Seller Dashboard](${env.NEXT_PUBLIC_APP_URL}/seller/orders/${order.id}) to accept or update this order.`;
+        `Buyurtmani qabul qilish yoki holatini o'zgartirish uchun quyidagi tugmani bosing 👇`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            {
+              text: '📋 Buyurtmani boshqarish (Web App)',
+              web_app: { url: `${env.NEXT_PUBLIC_APP_URL}/seller/orders/${order.id}` },
+            },
+          ],
+        ],
+      };
 
       const notificationLog = await prisma.telegramNotification.create({
         data: {
@@ -167,7 +178,7 @@ export class TelegramService {
       }
 
       // Send to Telegram API
-      const result = await this.sendDirectMessage(order.seller.telegramChatId.toString(), messageText);
+      const result = await this.sendDirectMessage(order.seller.telegramChatId.toString(), messageText, replyMarkup);
 
       if (result.ok) {
         await prisma.telegramNotification.update({
@@ -198,7 +209,11 @@ export class TelegramService {
   /**
    * Dispatches direct HTTP POST request to Telegram sendMessage API
    */
-  private static async sendDirectMessage(chatId: string | number | bigint, text: string): Promise<{ ok: boolean; description?: string }> {
+  static async sendDirectMessage(
+    chatId: string | number | bigint,
+    text: string,
+    replyMarkup?: any
+  ): Promise<{ ok: boolean; description?: string }> {
     if (!this.botToken) {
       return { ok: false, description: 'Telegram Bot Token not configured' };
     }
@@ -212,6 +227,7 @@ export class TelegramService {
           chat_id: chatId.toString(),
           text,
           parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
         }),
       });
 

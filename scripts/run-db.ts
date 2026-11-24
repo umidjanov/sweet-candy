@@ -47,8 +47,8 @@ async function start() {
     }
   });
 
-  server.listen(PORT, '127.0.0.1', () => {
-    console.log(`[Embedded Postgres] Server is listening on 127.0.0.1:${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Embedded Postgres] Server is listening on 0.0.0.0:${PORT}`);
     console.log(`[Embedded Postgres] Connection string: postgresql://postgres:postgres@localhost:${PORT}/sweetmarket`);
   });
 

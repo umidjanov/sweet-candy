@@ -42,6 +42,7 @@ export const uz = {
     openStore: "Do'kon ochish",
     myOrders: 'Buyurtmalarim',
     favorites: 'Sevimlilar',
+    profile: 'Profilim',
     sellerDashboard: 'Sotuvchi kabineti',
     adminPanel: 'Admin paneli',
     logout: 'Chiqish',
