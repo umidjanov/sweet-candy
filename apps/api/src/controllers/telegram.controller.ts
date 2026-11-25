@@ -44,6 +44,43 @@ export class TelegramController {
     }
   }
 
+  static async getCustomerStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) return sendError(res, 'Authentication required', 401, 'UNAUTHORIZED');
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.userId },
+        select: {
+          telegramChatId: true,
+          telegramUsername: true,
+        },
+      });
+      const { botUrl } = TelegramService.generateCustomerLinkToken(req.user.userId);
+      return sendSuccess(res, {
+        connected: Boolean(user?.telegramChatId),
+        username: user?.telegramUsername || null,
+        botUrl,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async linkCustomerWebApp(req: Request, res: Response) {
+    try {
+      if (!req.user) return sendError(res, 'Authentication required', 401, 'UNAUTHORIZED');
+      const initData = typeof req.body?.initData === 'string' ? req.body.initData : '';
+      const verified = TelegramService.verifyWebAppInitData(initData);
+      if (!verified) {
+        return sendError(res, 'Invalid Telegram WebApp initData', 400, 'INVALID_TELEGRAM_DATA');
+      }
+
+      await TelegramService.linkCustomerChatId(req.user.userId, verified.telegramId, verified.username);
+      return sendSuccess(res, { connected: true, username: verified.username || null }, 'Telegram linked');
+    } catch (err: any) {
+      return sendError(res, err.message || 'Failed to link Telegram', 400, 'LINK_FAILED');
+    }
+  }
+
   static async disconnect(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user?.sellerId) return sendError(res, 'Seller account required', 403, 'FORBIDDEN');

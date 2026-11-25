@@ -4,6 +4,10 @@ import { authenticate, requireRole } from '../middleware/auth';
 
 const router = Router();
 
+// Authenticated customer/user Telegram notification linking
+router.get('/customer-status', authenticate, TelegramController.getCustomerStatus);
+router.post('/customer-link-webapp', authenticate, TelegramController.linkCustomerWebApp);
+
 // Seller Telegram configuration
 router.post('/connect-token', authenticate, requireRole('SELLER'), TelegramController.getConnectToken);
 router.get('/status', authenticate, requireRole('SELLER'), TelegramController.getStatus);

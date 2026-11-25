@@ -47,5 +47,22 @@ export const updateOrderStatusSchema = z.object({
   ]),
   rejectionReason: z.string().optional(),
   sellerNotes: z.string().optional(),
+  trackingUrl: z
+    .string()
+    .trim()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        try {
+          const parsed = new URL(val);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Valid http/https delivery tracking URL is required' }
+    )
+    .optional()
+    .or(z.literal('')),
 });
 

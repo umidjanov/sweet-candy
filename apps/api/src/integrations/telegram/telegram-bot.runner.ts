@@ -422,6 +422,26 @@ export class TelegramBotRunner {
       if (normalizedCmd === '/start' && text.includes(' ')) {
         const connToken = text.split(/\s+/).slice(1).join(' ').trim();
         if (connToken) {
+          if (connToken.startsWith('c_')) {
+            const custRes = await TelegramService.handleCustomerTelegramStart(chatId, connToken, msg.from?.username);
+            if (custRes.success) {
+              await this.sendMessageWithMarkup(
+                token,
+                chatId,
+                'Buyurtma va katalog bo‘limlari 👇',
+                this.getMainKeyboard()
+              );
+            } else {
+              await this.sendMessageWithMarkup(
+                token,
+                chatId,
+                `⚠️ *Xatolik:* ${this.escapeMarkdown(custRes.message)}`,
+                this.getMainKeyboard()
+              );
+            }
+            return;
+          }
+
           const res = await TelegramService.handleTelegramStartCommand(chatId, connToken);
           if (res.success) {
             await this.sendMessageWithMarkup(
@@ -440,6 +460,32 @@ export class TelegramBotRunner {
           }
           return;
         }
+      }
+
+      // 1b. Handle shared phone contact for automatic customer order notifications
+      if (msg.contact?.phone_number) {
+        const linkRes = await TelegramService.linkCustomerByPhone(
+          chatId,
+          msg.contact.phone_number,
+          msg.from?.username
+        );
+        if (linkRes.matchedCount > 0) {
+          await this.sendMessageWithMarkup(
+            token,
+            chatId,
+            `✅ *Telefon raqamingiz ulandi!*\nEndi buyurtmalaringiz holati va Yandex dastafka havolasi darhol shu botga keladi.`,
+            this.getMainKeyboard()
+          );
+          await this.sendMyOrders(token, chatId);
+        } else {
+          await this.sendMessageWithMarkup(
+            token,
+            chatId,
+            `Bu raqam bilan ro‘yxatdan o‘tgan akkaunt topilmadi. Avval saytda shu raqam bilan ro‘yxatdan o‘ting yoki saytdagi "Buyurtmalarim" bo‘limidan Telegramni ulang.`,
+            this.getMainKeyboard()
+          );
+        }
+        return;
       }
 
       // 2. Back to Main / Start command (shows 5 main buttons + website/login access)
@@ -552,6 +598,20 @@ export class TelegramBotRunner {
         await this.sendHelpMessage(token, chatId);
       } else if (data === 'open_main') {
         await this.sendWelcomeMessage(token, chatId, cb.from?.first_name || 'Mehmon');
+      } else if (data === 'link_customer_notifications') {
+        await this.sendMessageWithMarkup(
+          token,
+          chatId,
+          `📲 *Buyurtma holati va Yandex link xabarlarini yoqish*\n\nSaytda ro‘yxatdan o‘tgan telefon raqamingizni ulash uchun quyidagi tugmani bosing (yoki saytdagi *Buyurtmalarim* sahifasidagi "Telegram botga ulanish" tugmasini bosing):`,
+          {
+            keyboard: [
+              [{ text: '📱 Telefon raqamni ulash', request_contact: true }],
+              [{ text: '⬅️ Ortga qaytish' }],
+            ],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          }
+        );
       }
     }
   }
@@ -611,7 +671,7 @@ export class TelegramBotRunner {
         return;
       }
 
-      await OrderService.updateOrderStatus(
+      const statusResult = await OrderService.updateOrderStatus(
         order.id,
         targetStatus,
         order.seller.userId,
@@ -624,7 +684,7 @@ export class TelegramBotRunner {
       const statusMessages: Record<string, string> = {
         ACCEPTED: `✅ Buyurtma #${order.orderNumber} qabul qilindi!`,
         PREPARING: `👨‍🍳 Buyurtma #${order.orderNumber} tayyorlanmoqda!`,
-        READY: `📦 Buyurtma #${order.orderNumber} tayyor!`,
+        READY: `📦 Buyurtma #${order.orderNumber} tayyor! Endi Dastafka (Yandex link) yuborish ruxsati ochildi.`,
         OUT_FOR_DELIVERY: `🚚 Buyurtma #${order.orderNumber} yetkazilmoqda!`,
         COMPLETED: `🎉 Buyurtma #${order.orderNumber} tugatildi!`,
         REJECTED: `❌ Buyurtma #${order.orderNumber} rad etildi.`,
@@ -645,25 +705,44 @@ export class TelegramBotRunner {
                 ],
               ],
             }
-          : {
-              inline_keyboard: [
-                [
-                  ...(targetStatus === 'ACCEPTED'
-                    ? [{ text: '👨‍🍳 Tayyorlanmoqda', callback_data: `order_status:${order.id}:PREPARING` }]
-                    : []),
-                  ...(targetStatus === 'ACCEPTED' || targetStatus === 'PREPARING'
-                    ? [{ text: '📦 Tayyor', callback_data: `order_status:${order.id}:READY` }]
-                    : []),
-                  { text: '🚚 Yetkazildi (Tugatish)', callback_data: `order_status:${order.id}:COMPLETED` },
+          : targetStatus === 'READY'
+            ? {
+                inline_keyboard: [
+                  [
+                    {
+                      text: '🚚 Dastafka qilindi (Yandex link yuborish)',
+                      web_app: { url: `${webAppUrl}/seller/orders/${order.id}?dispatch=1` },
+                    },
+                  ],
+                  [
+                    { text: '🎉 Topshirildi (Yakunlash)', callback_data: `order_status:${order.id}:COMPLETED` },
+                  ],
+                  [
+                    {
+                      text: '📋 Saytda boshqarish',
+                      web_app: { url: `${webAppUrl}/seller/orders/${order.id}` },
+                    },
+                  ],
                 ],
-                [
-                  {
-                    text: '📋 Saytda boshqarish',
-                    web_app: { url: `${webAppUrl}/seller/orders/${order.id}` },
-                  },
+              }
+            : {
+                inline_keyboard: [
+                  [
+                    ...(targetStatus === 'ACCEPTED'
+                      ? [{ text: '👨‍🍳 Tayyorlanmoqda', callback_data: `order_status:${order.id}:PREPARING` }]
+                      : []),
+                    ...(targetStatus === 'ACCEPTED' || targetStatus === 'PREPARING'
+                      ? [{ text: '📦 Tayyor', callback_data: `order_status:${order.id}:READY` }]
+                      : []),
+                  ],
+                  [
+                    {
+                      text: '📋 Saytda boshqarish',
+                      web_app: { url: `${webAppUrl}/seller/orders/${order.id}` },
+                    },
+                  ],
                 ],
-              ],
-            };
+              };
 
       if (messageId) {
         await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
@@ -677,10 +756,14 @@ export class TelegramBotRunner {
         });
       }
 
+      const clientNotifNote = (statusResult as any)?.telegramNotification?.delivered
+        ? '\n📩 Mijozga ham Telegram bot orqali xabar yuborildi!'
+        : '\nℹ️ Mijozning saytdagi "Buyurtmalarim" bo‘limida holat yangilandi.';
+
       await this.sendMessageWithMarkup(
         token,
         chatId,
-        `${toastMsg}\nSaytdagi buyurtmalar bo‘limida ham holat avtomatik yangilandi.`
+        `${toastMsg}${clientNotifNote}`
       );
     } catch (err: any) {
       await answerCb(err?.message || 'Holatni yangilashda xatolik', true);
@@ -922,27 +1005,67 @@ export class TelegramBotRunner {
   }
 
   /**
-   * Sends user orders view
+   * Sends user orders view (including live statuses & Yandex delivery links if linked)
    */
   private static async sendMyOrders(token: string, chatId: number) {
     const webAppUrl = this.getWebAppBaseUrl();
 
-    const text =
-      `📦 *Sizning buyurtmalaringiz*\n\n` +
-      `Sayt va Telegram Web App orqali berilgan barcha buyurtmalaringiz, ularning tayyorlanish holati va yetkazish vaqtini ko‘rish uchun quyidagi tugmani bosing:`;
+    let linkedUser: { id: string; firstName: string } | null = null;
+    try {
+      linkedUser = await prisma.user.findFirst({
+        where: { telegramChatId: BigInt(chatId) },
+        select: { id: true, firstName: true },
+      });
+    } catch {
+      linkedUser = null;
+    }
 
-    const inlineMarkup = {
-      inline_keyboard: [
-        [
-          { text: '📦 Buyurtmalarimni ko‘rish', web_app: { url: `${webAppUrl}/account/orders` } },
-        ],
-        [
-          { text: '🛍️ Yangi shirinlik buyurtma qilish', web_app: { url: webAppUrl } },
-        ],
-      ],
-    };
+    if (linkedUser) {
+      const orders = await prisma.order.findMany({
+        where: { customerId: linkedUser.id },
+        include: { seller: true, items: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
 
-    await this.sendMessageWithMarkup(token, chatId, text, inlineMarkup);
+      const orderSummary =
+        orders.length > 0
+          ? orders
+              .map((ord) => {
+                const statusTxt = TelegramService.formatStatusUz(ord.status);
+                const yandexTxt = ord.trackingUrl ? `\n   📍 Yandex link: ${ord.trackingUrl}` : '';
+                return `• *#${this.escapeMarkdown(ord.orderNumber)}* — ${this.escapeMarkdown(ord.seller.storeName)}\n   Holat: *${statusTxt}*${yandexTxt}`;
+              })
+              .join('\n\n')
+          : 'Hozircha buyurtmalaringiz yo‘q.';
+
+      const text =
+        `📦 *Sizning buyurtmalaringiz (${orders.length} ta oxirgi):*\n\n` +
+        `${orderSummary}\n\n` +
+        `Barcha tafsilotlar uchun sayt/ilovada ochishingiz mumkin:`;
+
+      await this.sendMessageWithMarkup(token, chatId, text, {
+        inline_keyboard: [
+          [{ text: '📦 Buyurtmalarimni ko‘rish', web_app: { url: `${webAppUrl}/account/orders` } }],
+          [{ text: '🛍️ Yangi shirinlik buyurtma qilish', web_app: { url: webAppUrl } }],
+        ],
+      });
+    } else {
+      const text =
+        `📦 *Sizning buyurtmalaringiz*\n\n` +
+        `Buyurtmalaringiz holati (*Qabul qilindi*, *Tayyorlanmoqda*, *Tayyor*) va *Yandex dastafka havolasini* shu botda olish uchun bildirishnomalarni ulang:`;
+
+      const inlineMarkup = {
+        inline_keyboard: [
+          [{ text: '🔔 Telegram xabarnomalarni yoqish', callback_data: 'link_customer_notifications' }],
+          [{ text: '📦 Buyurtmalarimni ko‘rish (Sayt)', web_app: { url: `${webAppUrl}/account/orders` } }],
+          [{ text: '🛍️ Yangi shirinlik buyurtma qilish', web_app: { url: webAppUrl } }],
+        ],
+      };
+
+      await this.sendMessageWithMarkup(token, chatId, text, inlineMarkup);
+    }
+
     await this.sendMessageWithMarkup(
       token,
       chatId,

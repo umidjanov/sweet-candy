@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateOrderNumber } from '../src/utils/order-number';
 import { createProductSchema } from '../src/validators/product.validator';
-import { createOrderSchema } from '../src/validators/order.validator';
+import { createOrderSchema, updateOrderStatusSchema } from '../src/validators/order.validator';
 import { TelegramService } from '../src/integrations/telegram/telegram.service';
 import { TelegramBotRunner } from '../src/integrations/telegram/telegram-bot.runner';
 import { TelegramController } from '../src/controllers/telegram.controller';
 import { OrderService } from '../src/services/order.service';
 import { prisma } from '../src/config/database';
+import '../src/utils/response';
 
 describe('SweetMarket Product, Order & Telegram Tests', () => {
   it('should generate properly formatted order numbers (SM-YYMM-XXXX)', () => {
@@ -260,6 +261,119 @@ describe('SweetMarket Product, Order & Telegram Tests', () => {
     notifCreateSpy.mockRestore();
     notifUpdateSpy.mockRestore();
     updateStatusSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  it('should serialize BigInt values safely in JSON responses', () => {
+    const payload = {
+      user: {
+        id: 'u-1',
+        sellerProfile: {
+          id: 'sel-1',
+          telegramChatId: BigInt('7189234567'),
+        },
+      },
+    };
+    expect(() => JSON.stringify(payload)).not.toThrow();
+    expect(JSON.parse(JSON.stringify(payload)).user.sellerProfile.telegramChatId).toBe('7189234567');
+  });
+
+  it('should generate and verify compact customer Telegram link tokens (<= 64 chars)', () => {
+    const userId = 'a0000000-0000-0000-0000-000000000123';
+    const { token, botUrl } = TelegramService.generateCustomerLinkToken(userId);
+    expect(token.length).toBeLessThanOrEqual(64);
+    expect(/^[A-Za-z0-9_-]+$/.test(token)).toBe(true);
+    expect(botUrl).toContain(`?start=${token}`);
+    expect(TelegramService.verifyCustomerLinkToken(token)).toBe(userId);
+  });
+
+  it('should enforce READY permission before OUT_FOR_DELIVERY and send Yandex link to customer Telegram', async () => {
+    expect(
+      updateOrderStatusSchema.safeParse({
+        status: 'OUT_FOR_DELIVERY',
+        trackingUrl: 'https://go.yandex/track/12345',
+      }).success
+    ).toBe(true);
+
+    // 1. Block OUT_FOR_DELIVERY when order is still PREPARING
+    const preparingFindSpy = vi.spyOn(prisma.order, 'findUnique').mockResolvedValueOnce({
+      id: 'ord-2',
+      orderNumber: 'SM-2611-2222',
+      sellerId: 'sel-1',
+      status: 'PREPARING',
+      seller: { id: 'sel-1', storeName: "Azizov's Cakes" },
+    } as any);
+
+    await expect(
+      OrderService.updateOrderStatus('ord-2', 'OUT_FOR_DELIVERY', 'user-sel-1', 'sel-1', false, {
+        trackingUrl: 'https://go.yandex/track/12345',
+      })
+    ).rejects.toThrow(/Tayyor/i);
+    preparingFindSpy.mockRestore();
+
+    // 2. Allow OUT_FOR_DELIVERY when READY + valid Yandex URL and notify customer on Telegram
+    process.env.TELEGRAM_BOT_TOKEN = '123456:TEST_TOKEN';
+    const readyFindSpy = vi
+      .spyOn(prisma.order, 'findUnique')
+      .mockResolvedValueOnce({
+        id: 'ord-3',
+        orderNumber: 'SM-2611-3333',
+        sellerId: 'sel-1',
+        customerId: 'cust-1',
+        status: 'READY',
+        dispatchedAt: null,
+        seller: { id: 'sel-1', storeName: "Azizov's Cakes" },
+      } as any)
+      .mockResolvedValueOnce({
+        id: 'ord-3',
+        orderNumber: 'SM-2611-3333',
+        customerName: 'Dilnoza',
+        deliveryType: 'DELIVERY',
+        trackingUrl: 'https://go.yandex/track/999',
+        customer: { id: 'cust-1', firstName: 'Dilnoza', telegramChatId: BigInt(888777666) },
+        seller: { id: 'sel-1', storeName: "Azizov's Cakes", publicPhone: '+998901234567' },
+      } as any);
+
+    const txSpy = vi.spyOn(prisma, '$transaction').mockImplementationOnce(async (cb: any) =>
+      cb({
+        order: {
+          update: vi.fn().mockResolvedValue({
+            id: 'ord-3',
+            orderNumber: 'SM-2611-3333',
+            customerId: 'cust-1',
+            status: 'OUT_FOR_DELIVERY',
+            trackingUrl: 'https://go.yandex/track/999',
+          }),
+        },
+        notification: { create: vi.fn().mockResolvedValue({ id: 'n-1' }) },
+      })
+    );
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      json: async () => ({ ok: true }),
+    } as any);
+
+    const res: any = await OrderService.updateOrderStatus(
+      'ord-3',
+      'OUT_FOR_DELIVERY',
+      'user-sel-1',
+      'sel-1',
+      false,
+      { trackingUrl: 'https://go.yandex/track/999' }
+    );
+
+    expect(res.status).toBe('OUT_FOR_DELIVERY');
+    expect(res.trackingUrl).toBe('https://go.yandex/track/999');
+    expect(res.telegramNotification.delivered).toBe(true);
+
+    const tgBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(tgBody.chat_id).toBe('888777666');
+    expect(tgBody.text).toContain('tez orada keladi');
+    expect(tgBody.text).toContain('https://go.yandex/track/999');
+    expect(tgBody.reply_markup.inline_keyboard[0][0].url).toBe('https://go.yandex/track/999');
+
+    readyFindSpy.mockRestore();
+    txSpy.mockRestore();
     fetchSpy.mockRestore();
   });
 });

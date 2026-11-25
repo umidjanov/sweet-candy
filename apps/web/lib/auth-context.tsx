@@ -12,6 +12,7 @@ export interface User {
   role: 'CUSTOMER' | 'SELLER' | 'ADMIN';
   status: 'ACTIVE' | 'SUSPENDED';
   mustChangePassword?: boolean;
+  telegramConnected?: boolean;
   sellerProfile?: {
     id: string;
     storeName: string;
@@ -106,6 +107,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Automatically link logged-in customer/user Telegram Chat ID when inside Telegram Mini App
+  useEffect(() => {
+    if (!user || user.telegramConnected || typeof window === 'undefined') return;
+    const initData = window.Telegram?.WebApp?.initData;
+    if (!initData) return;
+
+    const linkedKey = `sweetmarket_tg_linked_${user.id}`;
+    if (sessionStorage.getItem(linkedKey)) return;
+    sessionStorage.setItem(linkedKey, '1');
+
+    apiClient<{ connected: boolean }>('/telegram/customer-link-webapp', {
+      method: 'POST',
+      body: JSON.stringify({ initData }),
+    })
+      .then((res) => {
+        if (res?.connected) {
+          setUser((prev) => (prev ? { ...prev, telegramConnected: true } : prev));
+        }
+      })
+      .catch(() => {
+        sessionStorage.removeItem(linkedKey);
+      });
+  }, [user]);
 
   const login = async (phone: string, pass: string) => {
     const res = await apiClient<{ user: User; accessToken: string }>('/auth/login', {

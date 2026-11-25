@@ -1,5 +1,11 @@
 import { Response } from 'express';
 
+if (!(BigInt.prototype as any).toJSON) {
+  (BigInt.prototype as any).toJSON = function () {
+    return this.toString();
+  };
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;

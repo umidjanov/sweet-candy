@@ -11,6 +11,16 @@ import { ensureAppReady } from './bootstrap';
 
 const app = express();
 
+// Ensure BigInt values (e.g. Telegram chat IDs) serialize safely everywhere in JSON responses
+if (!(BigInt.prototype as any).toJSON) {
+  (BigInt.prototype as any).toJSON = function () {
+    return this.toString();
+  };
+}
+app.set('json replacer', (_key: string, value: unknown) =>
+  typeof value === 'bigint' ? value.toString() : value
+);
+
 // Trust Vercel / reverse-proxy headers so req.protocol & req.get('host') reflect HTTPS
 app.set('trust proxy', 1);
 

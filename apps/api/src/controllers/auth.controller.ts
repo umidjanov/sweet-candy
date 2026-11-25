@@ -94,12 +94,21 @@ export class AuthController {
           role: true,
           status: true,
           mustChangePassword: true,
+          telegramChatId: true,
           sellerProfile: true,
           customerProfile: true,
         },
       });
 
-      return sendSuccess(res, user);
+      if (!user) {
+        return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+      }
+
+      const { telegramChatId, ...safeUser } = user;
+      return sendSuccess(res, {
+        ...safeUser,
+        telegramConnected: Boolean(telegramChatId),
+      });
     } catch (err) {
       next(err);
     }

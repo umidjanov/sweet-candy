@@ -240,7 +240,7 @@ export class OrderService {
     userId: string,
     sellerId?: string,
     isAdmin = false,
-    options?: { rejectionReason?: string; sellerNotes?: string }
+    options?: { rejectionReason?: string; sellerNotes?: string; trackingUrl?: string }
   ) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -263,19 +263,64 @@ export class OrderService {
       throw new Error(`Order is in terminal status "${previousStatus}" and cannot be modified.`);
     }
 
+    const cleanTrackingUrl = options?.trackingUrl?.trim() || '';
+
+    // Strict permission rule: Seller can dispatch delivery & send Yandex link ONLY once order is READY (or updating an already dispatched OUT_FOR_DELIVERY order)
+    if (newStatus === 'OUT_FOR_DELIVERY') {
+      if (previousStatus !== 'READY' && previousStatus !== 'OUT_FOR_DELIVERY') {
+        throw new Error(
+          "Dastafka (Yandex link yuborish) ruxsati faqat buyurtma 'Tayyor' (READY) bo'lganida ochiladi!"
+        );
+      }
+
+      if (!cleanTrackingUrl) {
+        throw new Error("Klientga jo'natish uchun Yandex yetkazib berish havolasini (link) kiriting!");
+      }
+
+      try {
+        const parsedUrl = new URL(cleanTrackingUrl);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+          throw new Error('Invalid protocol');
+        }
+      } catch {
+        throw new Error("Yandex havolasi to'g'ri http:// yoki https:// formatida bo'lishi kerak.");
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
+      const historyNote =
+        newStatus === 'OUT_FOR_DELIVERY'
+          ? `Yandex yetkazib berish havolasi yuborildi: ${cleanTrackingUrl}`
+          : options?.sellerNotes ||
+            (newStatus === 'REJECTED' ? options?.rejectionReason : `Status updated to ${newStatus}`);
+
       const ord = await tx.order.update({
         where: { id: orderId },
         data: {
           status: newStatus,
           ...(options?.rejectionReason && { rejectionReason: options.rejectionReason }),
           ...(options?.sellerNotes && { sellerNotes: options.sellerNotes }),
+          ...(newStatus === 'OUT_FOR_DELIVERY' && {
+            trackingUrl: cleanTrackingUrl,
+            dispatchedAt: order.dispatchedAt || new Date(),
+          }),
           statusHistory: {
             create: {
               fromStatus: previousStatus,
               toStatus: newStatus,
               changedByUserId: userId,
-              note: options?.sellerNotes || (newStatus === 'REJECTED' ? options?.rejectionReason : `Status updated to ${newStatus}`),
+              note: historyNote,
+            },
+          },
+        },
+        include: {
+          items: true,
+          seller: {
+            select: {
+              id: true,
+              storeName: true,
+              slug: true,
+              publicPhone: true,
             },
           },
         },
@@ -283,24 +328,26 @@ export class OrderService {
 
       // In-app notification to customer
       const statusTitleMap: Record<string, string> = {
-        ACCEPTED: 'Order Accepted!',
-        PREPARING: 'Baking in Progress!',
-        READY: 'Order Ready!',
-        OUT_FOR_DELIVERY: 'Sweet Delivery on the Way!',
-        COMPLETED: 'Order Delivered!',
-        REJECTED: 'Order Update: Declined',
+        ACCEPTED: 'Buyurtmangiz qabul qilindi!',
+        PREPARING: 'Buyurtmangiz tayyorlanmoqda!',
+        READY: 'Buyurtmangiz tayyor!',
+        OUT_FOR_DELIVERY: 'Buyurtmangiz yo‘lga chiqdi (Dastafka)!',
+        COMPLETED: 'Buyurtmangiz topshirildi!',
+        REJECTED: 'Buyurtma rad etildi',
       };
 
       const title = statusTitleMap[newStatus] || `Order Status: ${newStatus}`;
       const message =
         newStatus === 'REJECTED'
-          ? `Your order #${ord.orderNumber} was declined by the seller: ${options?.rejectionReason || 'Bakery unavailable'}`
-          : `Your order #${ord.orderNumber} status changed to ${newStatus}.`;
+          ? `#${ord.orderNumber} buyurtmangiz rad etildi: ${options?.rejectionReason || 'Sotuvchi band'}`
+          : newStatus === 'OUT_FOR_DELIVERY'
+            ? `#${ord.orderNumber} buyurtmangiz yo'lga chiqdi! Tez orada yetib keladi. Yandex link: ${cleanTrackingUrl}`
+            : `#${ord.orderNumber} buyurtmangiz holati yangilandi: ${TelegramService.formatStatusUz(newStatus)}.`;
 
       await tx.notification.create({
         data: {
           userId: ord.customerId,
-          type: 'ORDER_READY',
+          type: newStatus === 'OUT_FOR_DELIVERY' ? 'ORDER_READY' : 'ORDER_READY',
           title,
           message,
           linkUrl: `/account/orders/${ord.id}`,
@@ -310,7 +357,24 @@ export class OrderService {
       return ord;
     });
 
-    return updated;
+    let telegramNotification: { delivered: boolean; reason?: string } = {
+      delivered: false,
+      reason: 'NOT_SENT',
+    };
+    try {
+      telegramNotification = await TelegramService.sendCustomerOrderStatusNotification(updated.id, newStatus, {
+        trackingUrl: cleanTrackingUrl || updated.trackingUrl || undefined,
+        rejectionReason: options?.rejectionReason,
+      });
+    } catch (err: any) {
+      console.error(`Customer Telegram notification error for order ${updated.id}:`, err);
+      telegramNotification = { delivered: false, reason: err?.message || 'TELEGRAM_ERROR' };
+    }
+
+    return {
+      ...updated,
+      telegramNotification,
+    };
   }
 
   static async cancelOrder(orderId: string, customerId: string, reason?: string) {

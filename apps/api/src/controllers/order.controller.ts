@@ -71,6 +71,7 @@ export class OrderController {
         {
           rejectionReason: req.body.rejectionReason,
           sellerNotes: req.body.sellerNotes,
+          trackingUrl: req.body.trackingUrl,
         }
       );
 

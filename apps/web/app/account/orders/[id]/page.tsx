@@ -5,16 +5,14 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ShoppingBag,
-  Store,
   Clock,
   Phone,
   ChevronRight,
-  MapPin,
-  Calendar,
-  AlertCircle,
   Star,
   CheckCircle2,
-  XCircle,
+  Truck,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,12 +21,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
 import { useTranslation } from '@/lib/i18n';
+import { ORDER_PROGRESS_STEPS, getOrderStatusMeta } from '@/lib/order-status';
 
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { id } = params as { id: string };
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -46,20 +45,27 @@ export default function OrderDetailsPage() {
   const [reviewing, setReviewing] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState(false);
 
-  const fetchOrder = async () => {
+  const fetchOrder = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const data = await apiClient(`/orders/${id}`);
       setOrder(data);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (id) fetchOrder();
+    if (!id) return;
+    fetchOrder(false);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchOrder(true);
+      }
+    }, 12000);
+    return () => clearInterval(timer);
   }, [id]);
 
   const handleCancelOrder = async () => {
@@ -115,22 +121,29 @@ export default function OrderDetailsPage() {
 
   const canCancel = order.status === 'PENDING' || order.status === 'ACCEPTED';
   const isCompleted = order.status === 'COMPLETED';
+  const statusMeta = getOrderStatusMeta(order.status, lang);
+  const activeStepIndex = ORDER_PROGRESS_STEPS.indexOf(order.status);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs text-[#817781]">
-        <Link href="/account/orders" className="hover:text-[#E85D8E]">{t.account.ordersTitle}</Link>
-        <ChevronRight className="w-3.5 h-3.5" />
-        <span className="text-[#29252A] font-semibold">#{order.orderNumber}</span>
+      <nav className="flex items-center justify-between gap-2 text-xs text-[#817781]">
+        <div className="flex items-center gap-2">
+          <Link href="/account/orders" className="hover:text-[#E85D8E]">{t.account.ordersTitle}</Link>
+          <ChevronRight className="w-3.5 h-3.5" />
+          <span className="text-[#29252A] font-semibold">#{order.orderNumber}</span>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => fetchOrder(false)} className="rounded-xl text-xs">
+          <RefreshCw className="w-3.5 h-3.5 mr-1" /> Yangilash
+        </Button>
       </nav>
 
       {/* Header Info */}
       <div className="bg-white rounded-3xl p-6 border border-[#EEE6E9] shadow-soft flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-black text-[#29252A]">#{order.orderNumber}</h1>
-            <Badge variant="pink">{order.status.replace(/_/g, ' ')}</Badge>
+            <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
           </div>
           <p className="text-xs text-[#817781] mt-1">{formatDate(order.createdAt)}</p>
         </div>
@@ -157,6 +170,54 @@ export default function OrderDetailsPage() {
         </div>
       </div>
 
+      {/* Live Yandex Delivery Card */}
+      {order.trackingUrl && (
+        <div className="p-5 rounded-3xl bg-sky-50 border border-sky-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-soft">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white text-sky-600 flex items-center justify-center flex-shrink-0 border border-sky-100">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div className="space-y-1 text-xs">
+              <p className="font-bold text-sm text-sky-950">
+                🚚 Buyurtmangiz yo‘lga chiqdi! Tez orada yetib keladi
+              </p>
+              <p className="text-sky-800 break-all">{order.trackingUrl}</p>
+            </div>
+          </div>
+
+          <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+            <Button variant="primary" size="md" className="bg-sky-600 hover:bg-sky-700 text-white rounded-xl">
+              📍 Yandex xaritadan kuzatish <ExternalLink className="w-4 h-4 ml-1.5" />
+            </Button>
+          </a>
+        </div>
+      )}
+
+      {/* Visual Step Bar */}
+      {activeStepIndex >= 0 && (
+        <div className="bg-white rounded-3xl p-5 border border-[#EEE6E9] shadow-soft grid grid-cols-2 sm:grid-cols-6 gap-2">
+          {ORDER_PROGRESS_STEPS.map((step, idx) => {
+            const done = idx <= activeStepIndex;
+            const current = idx === activeStepIndex;
+            const meta = getOrderStatusMeta(step, lang);
+            return (
+              <div
+                key={step}
+                className={`px-3 py-2 rounded-xl text-[11px] font-bold text-center border ${
+                  current
+                    ? 'bg-[#E85D8E] text-white border-[#E85D8E]'
+                    : done
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-[#FAF8F6] text-[#817781] border-[#EEE6E9]'
+                }`}
+              >
+                {meta.shortLabel}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {reviewSuccess && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
           ✓ {t.cart.orderSuccess}
@@ -170,16 +231,19 @@ export default function OrderDetailsPage() {
         </h3>
 
         <div className="space-y-3 pl-2 border-l-2 border-[#FFF0F5] ml-2">
-          {order.statusHistory?.map((step: any, index: number) => (
-            <div key={index} className="relative pl-6 space-y-1">
-              <div className="absolute -left-[1.35rem] top-1 w-3.5 h-3.5 rounded-full bg-[#E85D8E] border-2 border-white" />
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-[#29252A]">{step.toStatus.replace(/_/g, ' ')}</span>
-                <span className="text-[#817781]">{formatDate(step.createdAt)}</span>
+          {order.statusHistory?.map((step: any, index: number) => {
+            const stepMeta = getOrderStatusMeta(step.toStatus, lang);
+            return (
+              <div key={index} className="relative pl-6 space-y-1">
+                <div className="absolute -left-[1.35rem] top-1 w-3.5 h-3.5 rounded-full bg-[#E85D8E] border-2 border-white" />
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-[#29252A]">{stepMeta.label}</span>
+                  <span className="text-[#817781]">{formatDate(step.createdAt)}</span>
+                </div>
+                {step.note && <p className="text-xs text-[#817781] break-words">{step.note}</p>}
               </div>
-              {step.note && <p className="text-xs text-[#817781]">{step.note}</p>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
