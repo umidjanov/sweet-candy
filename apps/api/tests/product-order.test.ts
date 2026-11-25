@@ -101,4 +101,31 @@ describe('SweetMarket Product, Order & Telegram Tests', () => {
     expect(jsonMock).toHaveBeenCalledWith({ ok: true });
     handleSpy.mockRestore();
   });
+
+  it('should send complete bot overview and escape special Markdown chars on /start', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      json: async () => ({ ok: true }),
+    } as any);
+
+    await TelegramBotRunner.handleUpdate('123456:TEST_TOKEN', {
+      update_id: 1000,
+      message: {
+        message_id: 2,
+        chat: { id: 777, type: 'private' },
+        from: { id: 777, is_bot: false, first_name: 'Fayzulloh_Dev' },
+        date: 1,
+        text: '/start@sweet_candy_uz_bot',
+      },
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const firstCallBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(firstCallBody.text).toContain('Fayzulloh\\_Dev');
+    expect(firstCallBody.text).toContain('Bot haqida ma’lumot va imkoniyatlar');
+    expect(firstCallBody.reply_markup.inline_keyboard[0][0].web_app.url).toMatch(/^https:\/\//);
+
+    const secondCallBody = JSON.parse((fetchSpy.mock.calls[1][1] as any).body);
+    expect(secondCallBody.reply_markup.is_persistent).toBe(true);
+    fetchSpy.mockRestore();
+  });
 });

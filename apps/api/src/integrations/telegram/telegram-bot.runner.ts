@@ -182,12 +182,19 @@ export class TelegramBotRunner {
   }
 
   /**
-   * Registers default slash commands
+   * Escapes Telegram legacy Markdown v1 special characters in dynamic user/product values.
+   */
+  private static escapeMarkdown(text: string): string {
+    return String(text || '').replace(/([_*`\[])/g, '\\$1');
+  }
+
+  /**
+   * Registers default slash commands and bot descriptions
    */
   private static async setupCommands(token: string) {
     try {
       const commands = [
-        { command: 'start', description: 'Bosh menyu / Botni ishga tushirish' },
+        { command: 'start', description: 'Bosh menyu va bot haqida ma’lumot' },
         { command: 'app', description: 'Sweet CANDY ilovasini ochish (Web App)' },
         { command: 'menu', description: 'Shirinliklar katalogi va narxlar' },
         { command: 'orders', description: 'Mening buyurtmalarim' },
@@ -195,11 +202,33 @@ export class TelegramBotRunner {
         { command: 'help', description: 'Yordam va ma’lumot' },
       ];
 
-      await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commands }),
-      });
+      await Promise.all([
+        fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commands }),
+        }),
+        fetch(`https://api.telegram.org/bot${token}/setMyShortDescription`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            short_description:
+              'Sweet CANDY — uy qandolatchilari, maxsus tortlar va shirinliklarga 24/7 onlayn buyurtma berish boti.',
+          }),
+        }),
+        fetch(`https://api.telegram.org/bot${token}/setMyDescription`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description:
+              '🍭 Sweet CANDY rasmiy Telegram botiga xush kelibsiz!\n\n' +
+              '• Tayyor va buyurtmaga maxsus tortlar, desertlar hamda pishiriqlar katalogi\n' +
+              '• Telegram Web App orqali 24/7 qulay onlayn buyurtma berish\n' +
+              '• Buyurtma holatini kuzatish va qandolatchilar uchun tezkor xabarnomalar\n\n' +
+              'Boshlash uchun /start tugmasini bosing!',
+          }),
+        }),
+      ]);
     } catch (err: any) {
       console.warn('Telegram setMyCommands warning:', err.message);
     }
@@ -278,57 +307,65 @@ export class TelegramBotRunner {
       const msg = update.message;
       const chatId = msg.chat.id;
       const text = msg.text?.trim() || '';
+      const normalizedCmd = text.split(' ')[0].split('@')[0].toLowerCase();
+      const firstName = msg.from?.first_name || 'Mehmon';
 
       // 1. Deep linking start command: /start <token>
-      if (text.startsWith('/start ')) {
-        const connToken = text.replace('/start ', '').trim();
-        const res = await TelegramService.handleTelegramStartCommand(chatId, connToken);
-        if (res.success) {
-          await this.sendMessage(token, chatId, `🎉 *Tabriklaymiz!*\n\nSizning *"${res.sellerName}"* do'koningiz muvaffaqiyatli ulandi!\nEndi xaridorlar shirinliklaringizga buyurtma berganda darhol shu yerga xabarnoma keladi.`);
-        } else {
-          await this.sendMessage(token, chatId, `⚠️ *Xatolik:* ${res.message}\n\nQaytadan ulash uchun do‘kon boshqaruv panelingizdan yangi token oling.`);
+      if (normalizedCmd === '/start' && text.includes(' ')) {
+        const connToken = text.split(/\s+/).slice(1).join(' ').trim();
+        if (connToken) {
+          const res = await TelegramService.handleTelegramStartCommand(chatId, connToken);
+          if (res.success) {
+            await this.sendMessage(
+              token,
+              chatId,
+              `🎉 *Tabriklaymiz!*\n\nSizning *"${this.escapeMarkdown(res.sellerName || '')}"* do‘koningiz muvaffaqiyatli ulandi!\nEndi xaridorlar shirinliklaringizga buyurtma berganda darhol shu yerga xabarnoma keladi.`
+            );
+          } else {
+            await this.sendMessage(token, chatId, `⚠️ *Xatolik:* ${this.escapeMarkdown(res.message)}\n\nQaytadan ulash uchun do‘kon boshqaruv panelingizdan yangi token oling.`);
+          }
+          return;
         }
-        return;
       }
 
-      // 2. Standard /start command
-      if (text === '/start') {
-        await this.sendWelcomeMessage(token, chatId, msg.from.first_name);
+      // 2. Standard /start command (including /start@botname)
+      if (normalizedCmd === '/start') {
+        await this.sendWelcomeMessage(token, chatId, firstName);
         return;
       }
 
       // 3. Web App /app command
-      if (text === '/app' || text.toLowerCase().includes('ilovani ochish') || text.toLowerCase().includes('shirinliklar do\'koni')) {
+      if (normalizedCmd === '/app' || text.toLowerCase().includes('ilovani ochish') || text.toLowerCase().includes('shirinliklar do\'koni')) {
         await this.sendWebAppButton(token, chatId);
         return;
       }
 
       // 4. Products menu: /menu or "🍰 Shirinliklar menyusi"
-      if (text === '/menu' || text.includes('Shirinliklar') || text.includes('shirinliklar')) {
+      if (normalizedCmd === '/menu' || text.includes('Shirinliklar') || text.includes('shirinliklar')) {
         await this.sendProductsCatalog(token, chatId);
         return;
       }
 
       // 5. My orders: /orders or "📦 Buyurtmalarim"
-      if (text === '/orders' || text.includes('Buyurtmalar') || text.includes('buyurtmalar')) {
+      if (normalizedCmd === '/orders' || text.includes('Buyurtmalar') || text.includes('buyurtmalar')) {
         await this.sendMyOrders(token, chatId);
         return;
       }
 
       // 6. Seller dashboard: /seller or "👨‍🍳 Qandolatchi kabineti"
-      if (text === '/seller' || text.includes('Qandolatchi') || text.includes('Sotuvchi')) {
+      if (normalizedCmd === '/seller' || text.includes('Qandolatchi') || text.includes('Sotuvchi')) {
         await this.sendSellerMenu(token, chatId);
         return;
       }
 
       // 7. Help & About: /help or "ℹ️ Biz haqimizda & Yordam"
-      if (text === '/help' || text.includes('haqimizda') || text.includes('Yordam')) {
+      if (normalizedCmd === '/help' || text.includes('haqimizda') || text.includes('Yordam')) {
         await this.sendHelpMessage(token, chatId);
         return;
       }
 
       // Default fallback
-      await this.sendWelcomeMessage(token, chatId, msg.from.first_name);
+      await this.sendWelcomeMessage(token, chatId, firstName);
     } else if (update.callback_query) {
       const cb = update.callback_query;
       const chatId = cb.message?.chat.id;
@@ -352,16 +389,23 @@ export class TelegramBotRunner {
   }
 
   /**
-   * Sends the primary Sweet CANDY welcome message with ReplyKeyboard
+   * Sends the primary Sweet CANDY welcome & bot-overview message with Web App + ReplyKeyboard
    */
   private static async sendWelcomeMessage(token: string, chatId: number, firstName: string) {
     const webAppUrl = this.getWebAppBaseUrl();
+    const safeName = this.escapeMarkdown(firstName || 'Mehmon');
 
     const welcomeText =
-      `🍭 *Sweet CANDY — Shirinliklar va Tortlar do‘koni*\n\n` +
-      `Assalomu alaykum, *${firstName}*! Sweet CANDY rasmiy Telegram botiga xush kelibsiz.\n\n` +
-      `Bu yerda eng sara shirinliklar, to'rtlar, desertlar va pishiriqlarni onlayn ko‘rishingiz, tanlashingiz va to‘g‘ridan-to‘g‘ri buyurtma qilishingiz mumkin!\n\n` +
-      `👇 Buyurtma berish uchun quyidagi tugmalardan foydalaning:`;
+      `🍭 *Sweet CANDY — Shirinliklar va Tortlar Platformasi*\n\n` +
+      `Assalomu alaykum, *${safeName}*! Sweet CANDY rasmiy Telegram botiga xush kelibsiz.\n\n` +
+      `ℹ️ *Bot haqida ma’lumot va imkoniyatlar:*\n` +
+      `• *🧁 Ilovani ochish (Web App)* — Barcha shirinliklar, tortlar va desertlarni qidirish, savatga qo‘shish va onlayn buyurtma berish\n` +
+      `• *🍰 Shirinliklar menyusi* (/menu) — Tayyor va buyurtma asosidagi shirinliklarni rasmi hamda narxi bilan ko‘rish\n` +
+      `• *📦 Buyurtmalarim* (/orders) — Buyurtmalaringiz holatini real vaqtda kuzatish\n` +
+      `• *👨‍🍳 Qandolatchi kabineti* (/seller) — Do‘kon ochish, mahsulot joylash va yangi buyurtmalar xabarnomalarini Telegram-da olish\n\n` +
+      `🌐 *Veb-sayt:* ${webAppUrl}\n` +
+      `📞 *Qo‘llab-quvvatlash:* +998 71 200 00 00\n\n` +
+      `👇 Boshlash uchun quyidagi tugmalardan foydalaning:`;
 
     const replyMarkup = {
       keyboard: [
@@ -378,7 +422,7 @@ export class TelegramBotRunner {
         ],
       ],
       resize_keyboard: true,
-      persistent: true,
+      is_persistent: true,
     };
 
     const inlineMarkup = {
@@ -388,14 +432,14 @@ export class TelegramBotRunner {
         ],
         [
           { text: '🍰 Shirinliklar katalogi', callback_data: 'open_menu' },
-          { text: 'ℹ️ Yordam', callback_data: 'open_help' },
+          { text: 'ℹ️ Batafsil ma’lumot', callback_data: 'open_help' },
         ],
       ],
     };
 
     await this.sendMessageWithMarkup(token, chatId, welcomeText, inlineMarkup);
     // Also deliver reply keyboard for bottom persistent buttons
-    await this.sendMessageWithMarkup(token, chatId, 'Boshqaruv tugmalari pastki menyuda faollashtirildi 👇', replyMarkup);
+    await this.sendMessageWithMarkup(token, chatId, 'Pastki boshqaruv tugmalari tayyor 👇', replyMarkup);
   }
 
   /**
@@ -463,11 +507,11 @@ export class TelegramBotRunner {
         const prepTime = prod.preparationTimeHours ? `${prod.preparationTimeHours} soat` : 'Darhol';
 
         const caption =
-          `🍰 *${prod.name}*\n` +
+          `🍰 *${this.escapeMarkdown(prod.name)}*\n` +
           `💰 *Narxi:* ${formattedPrice} UZS\n` +
           `⏱️ *Tayyorlanish vaqti:* ${prepTime}\n` +
-          `🏪 *Qandolatchi:* ${prod.seller.storeName}\n` +
-          (prod.description ? `📝 ${prod.description.substring(0, 120)}...\n` : '');
+          `🏪 *Qandolatchi:* ${this.escapeMarkdown(prod.seller.storeName)}\n` +
+          (prod.description ? `📝 ${this.escapeMarkdown(prod.description.substring(0, 120))}...\n` : '');
 
         const inlineKeyboard = {
           inline_keyboard: [
@@ -601,7 +645,7 @@ export class TelegramBotRunner {
 
   private static async sendMessageWithMarkup(token: string, chatId: number, text: string, replyMarkup?: any) {
     try {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -611,6 +655,22 @@ export class TelegramBotRunner {
           reply_markup: replyMarkup,
         }),
       });
+      const data = await res.json();
+      if (!data.ok) {
+        console.warn(`[Telegram Bot] sendMessage error (${data.error_code}): ${data.description}`);
+        // Retry without parse_mode in case dynamic characters broke Markdown entity parsing
+        if (String(data.description || '').includes('parse entities')) {
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: text.replace(/[*_`]/g, ''),
+              reply_markup: replyMarkup,
+            }),
+          });
+        }
+      }
     } catch (err: any) {
       console.error(`Error sending message to chat ${chatId}:`, err.message);
     }
