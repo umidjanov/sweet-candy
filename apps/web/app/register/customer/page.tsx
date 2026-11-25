@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation';
 import { ShoppingBag, ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EmailField, EmailValidationState, saveRecentEmail } from '@/components/ui/email-field';
 import { useAuth } from '@/lib/auth-context';
 import { useTranslation } from '@/lib/i18n';
 
 export default function CustomerRegisterPage() {
   const router = useRouter();
   const { registerCustomer } = useAuth();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -25,6 +26,11 @@ export default function CustomerRegisterPage() {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailState, setEmailState] = useState<EmailValidationState>({
+    isChecking: false,
+    isBlocking: false,
+    result: null,
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -34,6 +40,17 @@ export default function CustomerRegisterPage() {
     e.preventDefault();
     setError('');
 
+    if (formData.email.trim() && emailState.isBlocking) {
+      setError(
+        lang === 'ru'
+          ? 'Пожалуйста, укажите корректный и свободный email адрес.'
+          : lang === 'en'
+            ? 'Please enter a valid, available email address.'
+            : 'Iltimos, to‘g‘ri va bo‘sh email manzil kiriting.'
+      );
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -42,6 +59,7 @@ export default function CustomerRegisterPage() {
     setLoading(true);
     try {
       await registerCustomer(formData);
+      if (formData.email.trim()) saveRecentEmail(formData.email);
       router.push('/');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
@@ -73,6 +91,7 @@ export default function CustomerRegisterPage() {
             <Input
               label={t.auth.firstName}
               name="firstName"
+              autoComplete="given-name"
               placeholder="Ali"
               value={formData.firstName}
               onChange={handleChange}
@@ -81,6 +100,7 @@ export default function CustomerRegisterPage() {
             <Input
               label={t.auth.lastName}
               name="lastName"
+              autoComplete="family-name"
               placeholder="Valiyev"
               value={formData.lastName}
               onChange={handleChange}
@@ -92,25 +112,28 @@ export default function CustomerRegisterPage() {
             label={t.common.phone}
             name="phone"
             type="tel"
+            autoComplete="tel"
             placeholder="+998 90 123 45 67"
             value={formData.phone}
             onChange={handleChange}
             required
           />
 
-          <Input
+          <EmailField
             label={`${t.common.email}`}
             name="email"
-            type="email"
-            placeholder="ali@example.com"
+            mode="register"
+            placeholder="ali@gmail.com"
             value={formData.email}
-            onChange={handleChange}
+            onValueChange={(val) => setFormData((prev) => ({ ...prev, email: val }))}
+            onValidationChange={setEmailState}
           />
 
           <Input
             label={t.auth.password}
             name="password"
             type="password"
+            autoComplete="new-password"
             placeholder="••••••••"
             value={formData.password}
             onChange={handleChange}
@@ -121,6 +144,7 @@ export default function CustomerRegisterPage() {
             label={t.auth.confirmPassword}
             name="confirmPassword"
             type="password"
+            autoComplete="new-password"
             placeholder="••••••••"
             value={formData.confirmPassword}
             onChange={handleChange}

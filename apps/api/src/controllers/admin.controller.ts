@@ -32,6 +32,17 @@ export class AdminController {
     }
   }
 
+  static async resetUserPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const adminId = req.user!.userId;
+      const { password } = req.body;
+      const updated = await AdminService.resetUserPassword(adminId, req.params.id, password, req.ip);
+      return sendSuccess(res, updated, 'Temporary password set successfully');
+    } catch (err: any) {
+      return sendError(res, err.message, 400, 'PASSWORD_RESET_FAILED');
+    }
+  }
+
   static async getSellers(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await AdminService.getSellers(req.query as any);

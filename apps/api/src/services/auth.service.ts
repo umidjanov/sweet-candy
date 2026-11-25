@@ -4,6 +4,7 @@ import { env } from '../config/env';
 import { hashPassword, comparePassword } from '../utils/password';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { TokenPayload } from '../types/auth';
+import { verifyEmailAddress } from '../utils/email-verify';
 
 export class AuthService {
   /**
@@ -44,6 +45,55 @@ export class AuthService {
     }
   }
 
+  private static async validateAndNormalizeRegistrationEmail(rawEmail?: string): Promise<string | null> {
+    const trimmed = rawEmail?.trim().toLowerCase() || '';
+    if (!trimmed) return null;
+
+    const verification = await verifyEmailAddress(trimmed);
+    if (!verification.validFormat) {
+      throw new Error('Invalid email address format.');
+    }
+    if (!verification.domainValid) {
+      if (verification.suggestion) {
+        throw new Error(`Invalid email domain. Did you mean ${verification.suggestion}?`);
+      }
+      throw new Error('Email domain could not be verified. Please check your email address.');
+    }
+
+    const existingEmail = await prisma.user.findFirst({
+      where: { email: { equals: verification.normalized, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (existingEmail) {
+      throw new Error('A user with this email address already exists.');
+    }
+
+    return verification.normalized;
+  }
+
+  static async checkEmail(rawEmail: string) {
+    const verification = await verifyEmailAddress(rawEmail);
+    let existingUser: { id: string } | null = null;
+
+    if (verification.validFormat && verification.domainValid) {
+      existingUser = await prisma.user.findFirst({
+        where: { email: { equals: verification.normalized, mode: 'insensitive' } },
+        select: { id: true },
+      });
+    }
+
+    return {
+      email: verification.normalized,
+      validFormat: verification.validFormat,
+      domainValid: verification.domainValid,
+      dnsChecked: verification.dnsChecked,
+      exists: Boolean(existingUser),
+      available: verification.validFormat && verification.domainValid && !existingUser,
+      suggestion: verification.suggestion || null,
+      reason: verification.reason || 'OK',
+    };
+  }
+
   static async registerCustomer(data: {
     firstName: string;
     lastName: string;
@@ -59,14 +109,7 @@ export class AuthService {
       throw new Error('A user with this phone number already exists.');
     }
 
-    if (data.email) {
-      const existingEmail = await prisma.user.findUnique({
-        where: { email: data.email },
-      });
-      if (existingEmail) {
-        throw new Error('A user with this email address already exists.');
-      }
-    }
+    const normalizedEmail = await this.validateAndNormalizeRegistrationEmail(data.email);
 
     const hashedPassword = await hashPassword(data.password);
 
@@ -75,7 +118,7 @@ export class AuthService {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone,
-        email: data.email || null,
+        email: normalizedEmail,
         passwordHash: hashedPassword,
         role: 'CUSTOMER',
         status: 'ACTIVE',
@@ -138,6 +181,8 @@ export class AuthService {
       throw new Error('A user with this phone number already exists.');
     }
 
+    const normalizedEmail = await this.validateAndNormalizeRegistrationEmail(data.email);
+
     const hashedPassword = await hashPassword(data.password);
 
     // Generate slug from store name
@@ -153,7 +198,7 @@ export class AuthService {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone,
-        email: data.email || null,
+        email: normalizedEmail,
         passwordHash: hashedPassword,
         role: 'SELLER',
         status: 'ACTIVE',
@@ -214,9 +259,13 @@ export class AuthService {
   }
 
   static async login(phone: string, plainTextPassword: string) {
+    const identifier = phone.trim();
     const user = await prisma.user.findFirst({
       where: {
-        OR: [{ phone }, { email: phone }],
+        OR: [
+          { phone: identifier },
+          { email: { equals: identifier, mode: 'insensitive' } },
+        ],
       },
       include: {
         sellerProfile: true,

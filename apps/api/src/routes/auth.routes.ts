@@ -11,6 +11,7 @@ import {
 
 const router = Router();
 
+router.get('/check-email', AuthController.checkEmail);
 router.post('/register/customer', validate({ body: customerRegisterSchema }), AuthController.registerCustomer);
 router.post('/register/seller', validate({ body: sellerRegisterSchema }), AuthController.registerSeller);
 router.post('/login', validate({ body: loginSchema }), AuthController.login);

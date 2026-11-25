@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { SellerApprovalStatus, UserRole, UserStatus } from '@prisma/client';
+import { hashPassword } from '../utils/password';
 
 export class AdminService {
   static async logAction(data: {
@@ -106,9 +107,9 @@ export class AdminService {
     };
   }
 
-  static async getUsers(params: { search?: string; role?: UserRole; status?: UserStatus; page?: number; limit?: number }) {
-    const page = params.page || 1;
-    const limit = params.limit || 20;
+  static async getUsers(params: { search?: string; role?: UserRole; status?: UserStatus; page?: number | string; limit?: number | string }) {
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(params.limit) || 100));
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -134,6 +135,7 @@ export class AdminService {
           email: true,
           role: true,
           status: true,
+          mustChangePassword: true,
           createdAt: true,
           sellerProfile: { select: { id: true, storeName: true, approvalStatus: true } },
         },
@@ -163,6 +165,54 @@ export class AdminService {
       entity: 'USER',
       entityId: targetUserId,
       metadata: { previousStatus: user.status, newStatus: status },
+      ipAddress: ip,
+    });
+
+    return updated;
+  }
+
+  static async resetUserPassword(adminUserId: string, targetUserId: string, newPassword: string, ip?: string) {
+    const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!user) throw new Error('User not found');
+    if (user.role === 'ADMIN' && user.id !== adminUserId) {
+      throw new Error('Cannot reset another administrator password');
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+
+    const updated = await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        mustChangePassword: true,
+      },
+    });
+
+    await prisma.refreshToken.updateMany({
+      where: { userId: targetUserId },
+      data: { revoked: true },
+    });
+
+    await this.logAction({
+      userId: adminUserId,
+      action: 'USER_PASSWORD_RESET',
+      entity: 'USER',
+      entityId: targetUserId,
+      metadata: {
+        targetPhone: user.phone,
+        targetEmail: user.email,
+        role: user.role,
+      },
       ipAddress: ip,
     });
 

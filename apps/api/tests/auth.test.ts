@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { hashPassword, comparePassword } from '../src/utils/password';
 import { signAccessToken, verifyAccessToken, signRefreshToken, verifyRefreshToken } from '../src/utils/jwt';
-import { customerRegisterSchema, sellerRegisterSchema, loginSchema, changePasswordSchema } from '../src/validators/auth.validator';
+import { customerRegisterSchema, sellerRegisterSchema, loginSchema, changePasswordSchema, adminResetPasswordSchema } from '../src/validators/auth.validator';
+import { verifyEmailAddress } from '../src/utils/email-verify';
+import { AuthService } from '../src/services/auth.service';
+import { AdminService } from '../src/services/admin.service';
+import { prisma } from '../src/config/database';
 import { requireRole } from '../src/middleware/auth';
 import { Request, Response } from 'express';
 
@@ -129,5 +133,84 @@ describe('SweetMarket Security & Authentication Suite', () => {
 
     adminOnlyMiddleware(adminReq, resSuccess as Response, nextSuccess);
     expect(nextSuccess).toHaveBeenCalled();
+  });
+
+  it('should verify email format, detect common domain typos, and normalize email', async () => {
+    const empty = await verifyEmailAddress('   ', { skipDns: true });
+    expect(empty.validFormat).toBe(false);
+    expect(empty.reason).toBe('EMPTY');
+
+    const badFormat = await verifyEmailAddress('not-an-email', { skipDns: true });
+    expect(badFormat.validFormat).toBe(false);
+    expect(badFormat.reason).toBe('INVALID_FORMAT');
+
+    const typo = await verifyEmailAddress('Student@Gmial.com ', { skipDns: true });
+    expect(typo.normalized).toBe('student@gmial.com');
+    expect(typo.validFormat).toBe(true);
+    expect(typo.domainValid).toBe(false);
+    expect(typo.reason).toBe('TYPO_DOMAIN');
+    expect(typo.suggestion).toBe('student@gmail.com');
+
+    const valid = await verifyEmailAddress('  Ali@Gmail.COM ', { skipDns: true });
+    expect(valid.normalized).toBe('ali@gmail.com');
+    expect(valid.validFormat).toBe(true);
+    expect(valid.domainValid).toBe(true);
+    expect(valid.reason).toBe('OK');
+  });
+
+  it('should validate adminResetPasswordSchema and reset user password securely', async () => {
+    expect(adminResetPasswordSchema.safeParse({ password: '123' }).success).toBe(false);
+    expect(adminResetPasswordSchema.safeParse({ password: 'Sweet2026!' }).success).toBe(true);
+
+    const findSpy = vi.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce({
+      id: 'student-1',
+      phone: '+998901112233',
+      email: 'student@gmail.com',
+      role: 'CUSTOMER',
+    } as any);
+
+    const updateSpy = vi.spyOn(prisma.user, 'update').mockResolvedValueOnce({
+      id: 'student-1',
+      firstName: 'Ali',
+      lastName: 'Valiyev',
+      phone: '+998901112233',
+      email: 'student@gmail.com',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      mustChangePassword: true,
+    } as any);
+
+    const revokeSpy = vi.spyOn(prisma.refreshToken, 'updateMany').mockResolvedValueOnce({ count: 1 } as any);
+    const auditSpy = vi.spyOn(prisma.auditLog, 'create').mockResolvedValueOnce({ id: 'log-1' } as any);
+
+    const result = await AdminService.resetUserPassword('admin-1', 'student-1', 'Sweet2026!', '127.0.0.1');
+
+    expect(findSpy).toHaveBeenCalledWith({ where: { id: 'student-1' } });
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'student-1' },
+        data: expect.objectContaining({
+          mustChangePassword: true,
+          passwordHash: expect.stringMatching(/^\$2/),
+        }),
+      })
+    );
+    expect(revokeSpy).toHaveBeenCalledWith({ where: { userId: 'student-1' }, data: { revoked: true } });
+    expect(auditSpy).toHaveBeenCalled();
+    expect(result.mustChangePassword).toBe(true);
+
+    findSpy.mockRestore();
+    updateSpy.mockRestore();
+    revokeSpy.mockRestore();
+    auditSpy.mockRestore();
+  });
+
+  it('should check email availability cleanly via AuthService.checkEmail', async () => {
+    const findFirstSpy = vi.spyOn(prisma.user, 'findFirst').mockResolvedValueOnce({ id: 'u-1' } as any);
+    const existingRes = await AuthService.checkEmail('fayzulloh@gmail.com');
+    expect(existingRes.email).toBe('fayzulloh@gmail.com');
+    expect(existingRes.exists).toBe(true);
+    expect(existingRes.available).toBe(false);
+    findFirstSpy.mockRestore();
   });
 });

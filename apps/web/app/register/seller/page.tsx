@@ -7,13 +7,14 @@ import { Store, ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { EmailField, EmailValidationState, saveRecentEmail } from '@/components/ui/email-field';
 import { useAuth } from '@/lib/auth-context';
 import { useTranslation } from '@/lib/i18n';
 
 export default function SellerRegisterPage() {
   const router = useRouter();
   const { registerSeller } = useAuth();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -32,6 +33,11 @@ export default function SellerRegisterPage() {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailState, setEmailState] = useState<EmailValidationState>({
+    isChecking: false,
+    isBlocking: false,
+    result: null,
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -41,6 +47,17 @@ export default function SellerRegisterPage() {
     e.preventDefault();
     setError('');
 
+    if (formData.email.trim() && emailState.isBlocking) {
+      setError(
+        lang === 'ru'
+          ? 'Пожалуйста, укажите корректный и свободный email адрес.'
+          : lang === 'en'
+            ? 'Please enter a valid, available email address.'
+            : 'Iltimos, to‘g‘ri va bo‘sh email manzil kiriting.'
+      );
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError(t.auth.passwordsDoNotMatch);
       return;
@@ -49,6 +66,7 @@ export default function SellerRegisterPage() {
     setLoading(true);
     try {
       await registerSeller(formData);
+      if (formData.email.trim()) saveRecentEmail(formData.email);
       router.push('/seller/dashboard');
     } catch (err: any) {
       setError(err.message || 'Seller registration failed');
@@ -85,6 +103,7 @@ export default function SellerRegisterPage() {
               <Input
                 label={t.auth.firstName}
                 name="firstName"
+                autoComplete="given-name"
                 placeholder="Malika"
                 value={formData.firstName}
                 onChange={handleChange}
@@ -93,6 +112,7 @@ export default function SellerRegisterPage() {
               <Input
                 label={t.auth.lastName}
                 name="lastName"
+                autoComplete="family-name"
                 placeholder="Alieva"
                 value={formData.lastName}
                 onChange={handleChange}
@@ -104,19 +124,21 @@ export default function SellerRegisterPage() {
               label={t.common.phone}
               name="phone"
               type="tel"
+              autoComplete="tel"
               placeholder="+998 90 123 45 67"
               value={formData.phone}
               onChange={handleChange}
               required
             />
 
-            <Input
+            <EmailField
               label={t.common.email}
               name="email"
-              type="email"
-              placeholder="malika@bakery.uz"
+              mode="register"
+              placeholder="malika@gmail.com"
               value={formData.email}
-              onChange={handleChange}
+              onValueChange={(val) => setFormData((prev) => ({ ...prev, email: val }))}
+              onValidationChange={setEmailState}
             />
           </div>
 
@@ -200,6 +222,7 @@ export default function SellerRegisterPage() {
                 label={t.auth.password}
                 name="password"
                 type="password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={handleChange}
@@ -209,6 +232,7 @@ export default function SellerRegisterPage() {
                 label={t.auth.confirmPassword}
                 name="confirmPassword"
                 type="password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={formData.confirmPassword}
                 onChange={handleChange}

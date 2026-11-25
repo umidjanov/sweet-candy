@@ -119,5 +119,15 @@ export class AuthController {
       return sendError(res, err.message, 400, 'PASSWORD_CHANGE_FAILED');
     }
   }
+
+  static async checkEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const email = typeof req.query.email === 'string' ? req.query.email : '';
+      const result = await AuthService.checkEmail(email);
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 

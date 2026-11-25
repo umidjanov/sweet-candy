@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Cake, ArrowRight, AlertCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EmailField, saveRecentEmail } from '@/components/ui/email-field';
 import { useAuth } from '@/lib/auth-context';
 import { useTranslation } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
@@ -17,7 +18,7 @@ function LoginForm() {
   const isExpired = searchParams?.get('expired') === '1';
 
   const { login } = useAuth();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,6 +31,8 @@ function LoginForm() {
 
     try {
       const user = await login(phone, password);
+      if (phone.includes('@')) saveRecentEmail(phone);
+      else if (user.email) saveRecentEmail(user.email);
       if (user.role === 'ADMIN') {
         router.push('/admin');
       } else if (user.role === 'SELLER') {
@@ -79,16 +82,31 @@ function LoginForm() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label={t.auth.phoneOrEmail}
+        <EmailField
+          id="email"
+          name="email"
           type="text"
-          placeholder="+998 90 123 45 67 or email"
+          mode="login"
+          autoComplete="username email"
+          inputMode="email"
+          label={t.auth.phoneOrEmail}
+          placeholder="+998 90 123 45 67 / email@gmail.com"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onValueChange={setPhone}
+          helperText={
+            lang === 'ru'
+              ? 'Нажмите, чтобы выбрать email из Google/Chrome, или введите номер телефона'
+              : lang === 'en'
+                ? 'Tap to pick an email from Google/Chrome or enter your phone number'
+                : 'Google/Chrome hisobingizdagi emailni tanlang yoki telefon raqamingizni kiriting'
+          }
           required
         />
 
         <Input
+          id="password"
+          name="password"
+          autoComplete="current-password"
           label={t.auth.password}
           type="password"
           placeholder="••••••••"

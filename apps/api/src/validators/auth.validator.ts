@@ -2,12 +2,18 @@ import { z } from 'zod';
 
 const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
 
+const optionalNormalizedEmail = z
+  .string()
+  .transform((val) => val.trim().toLowerCase())
+  .pipe(z.union([z.literal(''), z.string().email('Invalid email address')]))
+  .optional();
+
 export const customerRegisterSchema = z
   .object({
     firstName: z.string().trim().min(2, 'First name must be at least 2 characters'),
     lastName: z.string().trim().min(2, 'Last name must be at least 2 characters'),
     phone: z.string().trim().regex(phoneRegex, 'Invalid phone number format. Example: +998901234567'),
-    email: z.string().email('Invalid email address').optional().or(z.literal('')),
+    email: optionalNormalizedEmail,
     password: z.string().min(6, 'Password must be at least 6 characters'),
     confirmPassword: z.string().min(6, 'Please confirm your password'),
   })
@@ -21,7 +27,7 @@ export const sellerRegisterSchema = z
     firstName: z.string().trim().min(2, 'First name must be at least 2 characters'),
     lastName: z.string().trim().min(2, 'Last name must be at least 2 characters'),
     phone: z.string().trim().regex(phoneRegex, 'Invalid phone number format. Example: +998901234567'),
-    email: z.string().email('Invalid email address').optional().or(z.literal('')),
+    email: optionalNormalizedEmail,
     password: z.string().min(6, 'Password must be at least 6 characters'),
     confirmPassword: z.string().min(6, 'Please confirm your password'),
     storeName: z.string().trim().min(3, 'Store name must be at least 3 characters'),
@@ -58,4 +64,8 @@ export const changePasswordSchema = z
     message: 'New passwords do not match',
     path: ['confirmNewPassword'],
   });
+
+export const adminResetPasswordSchema = z.object({
+  password: z.string().min(6, 'Password must be at least 6 characters').max(128, 'Password too long'),
+});
 
