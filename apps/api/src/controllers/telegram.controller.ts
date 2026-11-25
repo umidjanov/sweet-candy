@@ -107,7 +107,7 @@ export class TelegramController {
         ? `${forwardedProto || 'https'}://${host}`
         : getPublicApiOrigin();
 
-    const result = await TelegramBotRunner.ensureWebhook(origin);
+    const result = await TelegramBotRunner.ensureWebhook(origin, true);
     return sendSuccess(res, result, result.message, result.ok ? 200 : 400);
   }
 

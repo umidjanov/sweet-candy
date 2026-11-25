@@ -52,7 +52,10 @@ export class TelegramBotRunner {
   /**
    * Ensures Telegram Webhook, bot slash commands, and Web App menu button are registered for 24/7 serverless mode.
    */
-  public static async ensureWebhook(apiOrigin: string): Promise<{ ok: boolean; webhookUrl?: string; message: string }> {
+  public static async ensureWebhook(
+    apiOrigin: string,
+    forceSync = false
+  ): Promise<{ ok: boolean; webhookUrl?: string; message: string }> {
     const token = process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
     if (!token) {
       return { ok: false, message: 'TELEGRAM_BOT_TOKEN is not configured' };
@@ -66,7 +69,9 @@ export class TelegramBotRunner {
       const infoData = await infoRes.json();
 
       const currentUrl: string = infoData?.result?.url || '';
-      if (currentUrl !== targetWebhookUrl) {
+      const needsWebhookSet = currentUrl !== targetWebhookUrl;
+
+      if (needsWebhookSet) {
         const setRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -80,6 +85,9 @@ export class TelegramBotRunner {
         if (!setData.ok) {
           return { ok: false, webhookUrl: currentUrl, message: setData.description || 'setWebhook failed' };
         }
+      }
+
+      if (needsWebhookSet || forceSync) {
         await Promise.all([this.setupCommands(token), this.setupMenuButton(token)]);
       }
 
@@ -194,12 +202,13 @@ export class TelegramBotRunner {
   private static async setupCommands(token: string) {
     try {
       const commands = [
-        { command: 'start', description: 'Bosh menyu va bot haqida ma’lumot' },
-        { command: 'app', description: 'Sweet CANDY ilovasini ochish (Web App)' },
-        { command: 'menu', description: 'Shirinliklar katalogi va narxlar' },
+        { command: 'start', description: 'Bosh menyu (5 ta tugma) va bot haqida' },
+        { command: 'menu', description: 'Shirinliklar (barchasi rasm va ma’lumot bilan)' },
+        { command: 'prices', description: 'Narxlar (shirinliklar va narxlari)' },
         { command: 'orders', description: 'Mening buyurtmalarim' },
         { command: 'seller', description: 'Qandolatchi / Sotuvchi kabineti' },
-        { command: 'help', description: 'Yordam va ma’lumot' },
+        { command: 'app', description: 'Saytni ochish va Login' },
+        { command: 'help', description: 'Bot haqida va Yordam' },
       ];
 
       await Promise.all([
@@ -300,6 +309,102 @@ export class TelegramBotRunner {
   }
 
   /**
+   * Bottom ReplyKeyboard builders:
+   * - Main menu always shows 5 clickable buttons
+   * - Each sub-section swaps the bottom keyboard to 4 contextual buttons (4th = Ortga qaytish)
+   */
+  private static getMainKeyboard() {
+    return {
+      keyboard: [
+        [{ text: '🍰 Shirinliklar' }, { text: '💰 Narxlar' }],
+        [{ text: '📦 Buyurtmalarim' }, { text: '👨‍🍳 Qandolatchi kabineti' }],
+        [{ text: '🌐 Saytni ochish & Login' }],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
+  private static getProductsKeyboard(webAppUrl: string) {
+    return {
+      keyboard: [
+        [
+          { text: '🛍️ To‘liq katalog (Sayt)', web_app: { url: `${webAppUrl}/explore` } },
+          { text: '💰 Narxlarni ko‘rish' },
+        ],
+        [
+          { text: '🛒 Savatcha', web_app: { url: `${webAppUrl}/cart` } },
+          { text: '⬅️ Ortga qaytish' },
+        ],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
+  private static getPricesKeyboard() {
+    return {
+      keyboard: [
+        [{ text: '📉 Arzondan qimmatga' }, { text: '📈 Qimmatdan arzonga' }],
+        [{ text: '🍰 Rasmlar bilan ko‘rish' }, { text: '⬅️ Ortga qaytish' }],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
+  private static getOrdersKeyboard(webAppUrl: string) {
+    return {
+      keyboard: [
+        [
+          { text: '📋 Buyurtmalarimni ochish', web_app: { url: `${webAppUrl}/account/orders` } },
+          { text: '🛒 Yangi buyurtma', web_app: { url: `${webAppUrl}/explore` } },
+        ],
+        [
+          { text: '🛍️ Savatcha', web_app: { url: `${webAppUrl}/cart` } },
+          { text: '⬅️ Ortga qaytish' },
+        ],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
+  private static getSellerKeyboard(webAppUrl: string) {
+    return {
+      keyboard: [
+        [
+          { text: '📊 Sotuvchi Paneli', web_app: { url: `${webAppUrl}/seller/dashboard` } },
+          { text: '➕ Shirinlik qo‘shish', web_app: { url: `${webAppUrl}/seller/products/new` } },
+        ],
+        [
+          { text: '📦 Kelgan buyurtmalar', web_app: { url: `${webAppUrl}/seller/orders` } },
+          { text: '⬅️ Ortga qaytish' },
+        ],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
+  private static getSiteLoginKeyboard(webAppUrl: string) {
+    return {
+      keyboard: [
+        [
+          { text: '🚀 Saytni ochish', web_app: { url: webAppUrl } },
+          { text: '🔐 Login (Kirish)', web_app: { url: `${webAppUrl}/login` } },
+        ],
+        [
+          { text: '📝 Ro‘yxatdan o‘tish', web_app: { url: `${webAppUrl}/register` } },
+          { text: '⬅️ Ortga qaytish' },
+        ],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
+  /**
    * Dispatches incoming Telegram updates (called by both Webhook in cloud and Polling locally)
    */
   public static async handleUpdate(token: string, update: TelegramUpdate) {
@@ -307,6 +412,7 @@ export class TelegramBotRunner {
       const msg = update.message;
       const chatId = msg.chat.id;
       const text = msg.text?.trim() || '';
+      const lower = text.toLowerCase();
       const normalizedCmd = text.split(' ')[0].split('@')[0].toLowerCase();
       const firstName = msg.from?.first_name || 'Mehmon';
 
@@ -316,55 +422,102 @@ export class TelegramBotRunner {
         if (connToken) {
           const res = await TelegramService.handleTelegramStartCommand(chatId, connToken);
           if (res.success) {
-            await this.sendMessage(
+            await this.sendMessageWithMarkup(
               token,
               chatId,
-              `🎉 *Tabriklaymiz!*\n\nSizning *"${this.escapeMarkdown(res.sellerName || '')}"* do‘koningiz muvaffaqiyatli ulandi!\nEndi xaridorlar shirinliklaringizga buyurtma berganda darhol shu yerga xabarnoma keladi.`
+              `🎉 *Tabriklaymiz!*\n\nSizning *"${this.escapeMarkdown(res.sellerName || '')}"* do‘koningiz muvaffaqiyatli ulandi!\nEndi xaridorlar shirinliklaringizga buyurtma berganda darhol shu yerga xabarnoma keladi.`,
+              this.getMainKeyboard()
             );
           } else {
-            await this.sendMessage(token, chatId, `⚠️ *Xatolik:* ${this.escapeMarkdown(res.message)}\n\nQaytadan ulash uchun do‘kon boshqaruv panelingizdan yangi token oling.`);
+            await this.sendMessageWithMarkup(
+              token,
+              chatId,
+              `⚠️ *Xatolik:* ${this.escapeMarkdown(res.message)}\n\nQaytadan ulash uchun do‘kon boshqaruv panelingizdan yangi token oling.`,
+              this.getMainKeyboard()
+            );
           }
           return;
         }
       }
 
-      // 2. Standard /start command (including /start@botname)
-      if (normalizedCmd === '/start') {
+      // 2. Back to Main / Start command (shows 5 main buttons + website/login access)
+      if (
+        normalizedCmd === '/start' ||
+        text === '⬅️ Ortga qaytish' ||
+        lower.includes('ortga qaytish') ||
+        lower === 'bosh menyu'
+      ) {
         await this.sendWelcomeMessage(token, chatId, firstName);
         return;
       }
 
-      // 3. Web App /app command
-      if (normalizedCmd === '/app' || text.toLowerCase().includes('ilovani ochish') || text.toLowerCase().includes('shirinliklar do\'koni')) {
-        await this.sendWebAppButton(token, chatId);
+      // 3. Prices section (sorted ascending / descending)
+      if (text === '📉 Arzondan qimmatga') {
+        await this.sendPricesCatalog(token, chatId, 'asc');
+        return;
+      }
+      if (text === '📈 Qimmatdan arzonga') {
+        await this.sendPricesCatalog(token, chatId, 'desc');
+        return;
+      }
+      if (
+        normalizedCmd === '/prices' ||
+        text === '💰 Narxlar' ||
+        text === '💰 Narxlarni ko‘rish' ||
+        lower.includes('narx')
+      ) {
+        await this.sendPricesCatalog(token, chatId, 'asc');
         return;
       }
 
-      // 4. Products menu: /menu or "🍰 Shirinliklar menyusi"
-      if (normalizedCmd === '/menu' || text.includes('Shirinliklar') || text.includes('shirinliklar')) {
+      // 4. All sweets / Products menu
+      if (
+        normalizedCmd === '/menu' ||
+        text === '🍰 Shirinliklar' ||
+        text === '🍰 Rasmlar bilan ko‘rish' ||
+        lower.includes('shirinlik')
+      ) {
         await this.sendProductsCatalog(token, chatId);
         return;
       }
 
-      // 5. My orders: /orders or "📦 Buyurtmalarim"
-      if (normalizedCmd === '/orders' || text.includes('Buyurtmalar') || text.includes('buyurtmalar')) {
+      // 5. My orders
+      if (normalizedCmd === '/orders' || text === '📦 Buyurtmalarim' || lower.includes('buyurtma')) {
         await this.sendMyOrders(token, chatId);
         return;
       }
 
-      // 6. Seller dashboard: /seller or "👨‍🍳 Qandolatchi kabineti"
-      if (normalizedCmd === '/seller' || text.includes('Qandolatchi') || text.includes('Sotuvchi')) {
+      // 6. Seller cabinet
+      if (
+        normalizedCmd === '/seller' ||
+        text === '👨‍🍳 Qandolatchi kabineti' ||
+        lower.includes('qandolatchi') ||
+        lower.includes('sotuvchi')
+      ) {
         await this.sendSellerMenu(token, chatId);
         return;
       }
 
-      // 7. Help & About: /help or "ℹ️ Biz haqimizda & Yordam"
-      if (normalizedCmd === '/help' || text.includes('haqimizda') || text.includes('Yordam')) {
+      // 7. Site & Login
+      if (
+        normalizedCmd === '/app' ||
+        normalizedCmd === '/login' ||
+        text === '🌐 Saytni ochish & Login' ||
+        lower.includes('saytni ochish') ||
+        lower.includes('ilovani ochish') ||
+        lower.includes('login')
+      ) {
+        await this.sendSiteAndLoginMenu(token, chatId);
+        return;
+      }
+
+      // 8. Help & About
+      if (normalizedCmd === '/help' || lower.includes('haqimizda') || lower.includes('yordam')) {
         await this.sendHelpMessage(token, chatId);
         return;
       }
 
-      // Default fallback
+      // Default fallback returns main 5-button menu
       await this.sendWelcomeMessage(token, chatId, firstName);
     } else if (update.callback_query) {
       const cb = update.callback_query;
@@ -373,7 +526,6 @@ export class TelegramBotRunner {
 
       if (!chatId || !data) return;
 
-      // Answer callback query to dismiss loader in Telegram client
       await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -382,14 +534,18 @@ export class TelegramBotRunner {
 
       if (data === 'open_menu') {
         await this.sendProductsCatalog(token, chatId);
+      } else if (data === 'open_prices') {
+        await this.sendPricesCatalog(token, chatId, 'asc');
       } else if (data === 'open_help') {
         await this.sendHelpMessage(token, chatId);
+      } else if (data === 'open_main') {
+        await this.sendWelcomeMessage(token, chatId, cb.from?.first_name || 'Mehmon');
       }
     }
   }
 
   /**
-   * Sends the primary Sweet CANDY welcome & bot-overview message with Web App + ReplyKeyboard
+   * Sends the primary Sweet CANDY Main Menu (5 clickable bottom buttons + inline site/login actions)
    */
   private static async sendWelcomeMessage(token: string, chatId: number, firstName: string) {
     const webAppUrl = this.getWebAppBaseUrl();
@@ -398,68 +554,133 @@ export class TelegramBotRunner {
     const welcomeText =
       `🍭 *Sweet CANDY — Shirinliklar va Tortlar Platformasi*\n\n` +
       `Assalomu alaykum, *${safeName}*! Sweet CANDY rasmiy Telegram botiga xush kelibsiz.\n\n` +
-      `ℹ️ *Bot haqida ma’lumot va imkoniyatlar:*\n` +
-      `• *🧁 Ilovani ochish (Web App)* — Barcha shirinliklar, tortlar va desertlarni qidirish, savatga qo‘shish va onlayn buyurtma berish\n` +
-      `• *🍰 Shirinliklar menyusi* (/menu) — Tayyor va buyurtma asosidagi shirinliklarni rasmi hamda narxi bilan ko‘rish\n` +
-      `• *📦 Buyurtmalarim* (/orders) — Buyurtmalaringiz holatini real vaqtda kuzatish\n` +
-      `• *👨‍🍳 Qandolatchi kabineti* (/seller) — Do‘kon ochish, mahsulot joylash va yangi buyurtmalar xabarnomalarini Telegram-da olish\n\n` +
-      `🌐 *Veb-sayt:* ${webAppUrl}\n` +
-      `📞 *Qo‘llab-quvvatlash:* +998 71 200 00 00\n\n` +
-      `👇 Boshlash uchun quyidagi tugmalardan foydalaning:`;
-
-    const replyMarkup = {
-      keyboard: [
-        [
-          { text: '🧁 Ilovani ochish (Web App)', web_app: { url: webAppUrl } },
-        ],
-        [
-          { text: '🍰 Shirinliklar menyusi' },
-          { text: '📦 Buyurtmalarim' },
-        ],
-        [
-          { text: '👨‍🍳 Qandolatchi kabineti' },
-          { text: 'ℹ️ Biz haqimizda & Yordam' },
-        ],
-      ],
-      resize_keyboard: true,
-      is_persistent: true,
-    };
+      `ℹ️ *Bot haqida ma’lumot va bo‘limlar:*\n` +
+      `• *🍰 Shirinliklar* (/menu) — Barcha shirinliklarni rasmi va tarkibi bilan ko‘rish\n` +
+      `• *💰 Narxlar* (/prices) — Shirinliklar va ularning narxlar ro‘yxati\n` +
+      `• *📦 Buyurtmalarim* (/orders) — Buyurtmalaringiz holatini kuzatish\n` +
+      `• *👨‍🍳 Qandolatchi kabineti* (/seller) — Do‘kon boshqaruvi va buyurtma xabarnomalari\n` +
+      `• *🌐 Saytni ochish & Login* (/app) — Saytga kirish, akkauntga login qilish va ro‘yxatdan o‘tish\n\n` +
+      `🌐 *Sayt:* ${webAppUrl}\n` +
+      `📞 *Aloqa:* +998 71 200 00 00`;
 
     const inlineMarkup = {
       inline_keyboard: [
         [
-          { text: '🚀 Ilovani ochish (Web App)', web_app: { url: webAppUrl } },
+          { text: '🚀 Saytni ochish (Web App)', web_app: { url: webAppUrl } },
+          { text: '🔐 Login (Kirish)', web_app: { url: `${webAppUrl}/login` } },
         ],
         [
-          { text: '🍰 Shirinliklar katalogi', callback_data: 'open_menu' },
-          { text: 'ℹ️ Batafsil ma’lumot', callback_data: 'open_help' },
+          { text: '🍰 Shirinliklar', callback_data: 'open_menu' },
+          { text: '💰 Narxlar', callback_data: 'open_prices' },
+        ],
+        [
+          { text: 'ℹ️ Bot haqida & Yordam', callback_data: 'open_help' },
         ],
       ],
     };
 
     await this.sendMessageWithMarkup(token, chatId, welcomeText, inlineMarkup);
-    // Also deliver reply keyboard for bottom persistent buttons
-    await this.sendMessageWithMarkup(token, chatId, 'Pastki boshqaruv tugmalari tayyor 👇', replyMarkup);
+    await this.sendMessageWithMarkup(
+      token,
+      chatId,
+      '👇 Pastdagi 5 ta asosiy tugmadan kerakli bo‘limni tanlang:',
+      this.getMainKeyboard()
+    );
   }
 
   /**
-   * Sends direct Web App link button
+   * Sends Site & Login section with 4 contextual bottom buttons
    */
-  private static async sendWebAppButton(token: string, chatId: number) {
+  private static async sendSiteAndLoginMenu(token: string, chatId: number) {
     const webAppUrl = this.getWebAppBaseUrl();
     const text =
-      `🧁 *Sweet CANDY Ilovasi*\n\n` +
-      `Sweet CANDY to‘liq onlayn ilovasini ochish va buyurtma berish uchun quyidagi tugmani bosing:`;
+      `🌐 *Saytni ochish va Tizimga kirish (Login)*\n\n` +
+      `Sayt orqali to‘liq katalogni ko‘rishingiz, akkauntingizga kirishingiz (Login) yoki yangi xaridor/qandolatchi sifatida ro‘yxatdan o‘tishingiz mumkin:`;
 
     const inlineMarkup = {
       inline_keyboard: [
         [
-          { text: '🚀 Ilovani ochish (Web App)', web_app: { url: webAppUrl } },
+          { text: '🚀 Saytni ochish (Web App)', web_app: { url: webAppUrl } },
+          { text: '🔐 Login (Tizimga kirish)', web_app: { url: `${webAppUrl}/login` } },
+        ],
+        [
+          { text: '🛍️ Xaridor sifatida ro‘yxat', web_app: { url: `${webAppUrl}/register/customer` } },
+          { text: '👨‍🍳 Do‘kon ochish', web_app: { url: `${webAppUrl}/register/seller` } },
         ],
       ],
     };
 
     await this.sendMessageWithMarkup(token, chatId, text, inlineMarkup);
+    await this.sendMessageWithMarkup(
+      token,
+      chatId,
+      'Sayt va kirish bo‘limi tugmalari 👇',
+      this.getSiteLoginKeyboard(webAppUrl)
+    );
+  }
+
+  /**
+   * Sends ALL sweets with their prices and swaps bottom keyboard to 4 price-section buttons
+   */
+  private static async sendPricesCatalog(token: string, chatId: number, order: 'asc' | 'desc' = 'asc') {
+    const webAppUrl = this.getWebAppBaseUrl();
+    const pricesKeyboard = this.getPricesKeyboard();
+
+    try {
+      const products = await prisma.product.findMany({
+        where: {
+          isHiddenByAdmin: false,
+          availabilityStatus: { in: ['AVAILABLE', 'PRE_ORDER_ONLY'] },
+        },
+        include: {
+          seller: true,
+          category: true,
+        },
+        orderBy: { price: order },
+        take: 50,
+      });
+
+      if (!products || products.length === 0) {
+        await this.sendMessageWithMarkup(
+          token,
+          chatId,
+          `💰 *Shirinliklar narxlari*\n\nHozircha faol shirinliklar qo‘shilmagan. Sayt orqali katalogga kirishingiz yoki Qandolatchi kabinetidan shirinlik qo‘shishingiz mumkin.`,
+          {
+            inline_keyboard: [
+              [{ text: '🧁 Saytni ochish (Web App)', web_app: { url: `${webAppUrl}/explore` } }],
+              [{ text: '➕ Shirinlik qo‘shish', web_app: { url: `${webAppUrl}/seller/products/new` } }],
+            ],
+          }
+        );
+        await this.sendMessageWithMarkup(token, chatId, 'Narxlar bo‘limi tugmalari 👇', pricesKeyboard);
+        return;
+      }
+
+      const sortLabel = order === 'asc' ? 'Arzondan qimmatga' : 'Qimmatdan arzonga';
+      const lines = products.map((prod, idx) => {
+        const formattedPrice = Number(prod.price).toLocaleString('ru-RU');
+        const prep = prod.preparationTimeHours ? `${prod.preparationTimeHours} soat` : 'Darhol';
+        return (
+          `${idx + 1}. 🍰 *${this.escapeMarkdown(prod.name)}* — *${formattedPrice} ${prod.currency || 'UZS'}*\n` +
+          `   🏪 ${this.escapeMarkdown(prod.seller.storeName)} • ⏱️ ${prep}`
+        );
+      });
+
+      const priceText =
+        `💰 *Barcha shirinliklar va narxlar (${sortLabel}):*\n\n` +
+        `${lines.join('\n\n')}\n\n` +
+        `👇 Buyurtma berish yoki rasmlar bilan ko‘rish uchun tugmalardan foydalaning:`;
+
+      await this.sendMessageWithMarkup(token, chatId, priceText, {
+        inline_keyboard: [
+          [{ text: '🛒 Saytda buyurtma berish', web_app: { url: `${webAppUrl}/explore` } }],
+        ],
+      });
+      await this.sendMessageWithMarkup(token, chatId, 'Narxlar bo‘limi (4 ta tugma) 👇', pricesKeyboard);
+    } catch (err: any) {
+      console.error('Error fetching prices for Telegram bot:', err);
+      await this.sendMessageWithMarkup(token, chatId, `Narxlarni yuklashda xatolik yuz berdi. Sayt: ${webAppUrl}/explore`, pricesKeyboard);
+    }
   }
 
   /**
@@ -482,8 +703,10 @@ export class TelegramBotRunner {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 6,
+        take: 30,
       });
+
+      const productsKeyboard = this.getProductsKeyboard(webAppUrl);
 
       if (!products || products.length === 0) {
         await this.sendMessage(
@@ -496,10 +719,11 @@ export class TelegramBotRunner {
             ],
           }
         );
+        await this.sendMessageWithMarkup(token, chatId, 'Shirinliklar bo‘limi (4 ta tugma) 👇', productsKeyboard);
         return;
       }
 
-      await this.sendMessage(token, chatId, `✨ *Eng sara shirinliklarimiz:* \nQuyidagi har bir shirinlikka shu yerdan turib buyurtma bera olasiz:`);
+      await this.sendMessage(token, chatId, `✨ *Barcha shirinliklarimiz (${products.length} ta):* \nQuyidagi har bir shirinlikka shu yerdan turib buyurtma bera olasiz:`);
 
       for (const prod of products) {
         const imageUrl = prod.images && prod.images.length > 0 ? prod.images[0].url : null;
@@ -537,19 +761,20 @@ export class TelegramBotRunner {
         }
       }
 
-      await this.sendMessage(
+      await this.sendMessageWithMarkup(
         token,
         chatId,
-        `🍰 *Yana boshqa barcha shirinliklar, to'rtlar va desertlarni ko'rish uchun ilovani oching:*`,
-        {
-          inline_keyboard: [
-            [{ text: '🧁 Barcha shirinliklarni ko‘rish (Web App)', web_app: { url: `${webAppUrl}/explore` } }],
-          ],
-        }
+        'Shirinliklar bo‘limi (4 ta tugma) 👇',
+        productsKeyboard
       );
     } catch (err: any) {
       console.error('Error fetching products for Telegram bot:', err);
-      await this.sendMessage(token, chatId, `Xatolik yuz berdi. Iltimos, ilovani oching: ${webAppUrl}`);
+      await this.sendMessageWithMarkup(
+        token,
+        chatId,
+        `Xatolik yuz berdi. Iltimos, ilovani oching: ${webAppUrl}`,
+        this.getProductsKeyboard(webAppUrl)
+      );
     }
   }
 
@@ -575,6 +800,12 @@ export class TelegramBotRunner {
     };
 
     await this.sendMessageWithMarkup(token, chatId, text, inlineMarkup);
+    await this.sendMessageWithMarkup(
+      token,
+      chatId,
+      'Buyurtmalar bo‘limi (4 ta tugma) 👇',
+      this.getOrdersKeyboard(webAppUrl)
+    );
   }
 
   /**
@@ -605,6 +836,12 @@ export class TelegramBotRunner {
     };
 
     await this.sendMessageWithMarkup(token, chatId, text, inlineMarkup);
+    await this.sendMessageWithMarkup(
+      token,
+      chatId,
+      'Qandolatchi kabineti (4 ta tugma) 👇',
+      this.getSellerKeyboard(webAppUrl)
+    );
   }
 
   /**
@@ -617,7 +854,7 @@ export class TelegramBotRunner {
       `ℹ️ *Sweet CANDY haqida va Yordam*\n\n` +
       `Sweet CANDY — uy qandolatchilari, shirinlik ustalari va shirinlik ixlosmandlarini birlashtiruvchi zamonaviy platforma.\n\n` +
       `🧁 *Qanday buyurtma beriladi?*\n` +
-      `1. "Ilovani ochish" tugmasini bosing\n` +
+      `1. "Saytni ochish" tugmasini bosing\n` +
       `2. O‘zingizga yoqqan shirinlikni savatchaga qo‘shing\n` +
       `3. Yetkazib berish sanasi va manzilini kiritib buyurtmani tasdiqlang\n` +
       `4. Qandolatchi buyurtmangizni qabul qiladi va tayyorlaydi!\n\n` +
@@ -628,12 +865,19 @@ export class TelegramBotRunner {
     const inlineMarkup = {
       inline_keyboard: [
         [
-          { text: '🚀 Ilovani ochish (Web App)', web_app: { url: webAppUrl } },
+          { text: '🚀 Saytni ochish (Web App)', web_app: { url: webAppUrl } },
+          { text: '🔐 Login (Kirish)', web_app: { url: `${webAppUrl}/login` } },
         ],
       ],
     };
 
     await this.sendMessageWithMarkup(token, chatId, text, inlineMarkup);
+    await this.sendMessageWithMarkup(
+      token,
+      chatId,
+      'Sayt va yordam tugmalari (4 ta tugma) 👇',
+      this.getSiteLoginKeyboard(webAppUrl)
+    );
   }
 
   /**

@@ -121,11 +121,72 @@ describe('SweetMarket Product, Order & Telegram Tests', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const firstCallBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
     expect(firstCallBody.text).toContain('Fayzulloh\\_Dev');
-    expect(firstCallBody.text).toContain('Bot haqida ma’lumot va imkoniyatlar');
+    expect(firstCallBody.text).toContain('Bot haqida ma’lumot va bo‘limlar');
     expect(firstCallBody.reply_markup.inline_keyboard[0][0].web_app.url).toMatch(/^https:\/\//);
+    expect(firstCallBody.reply_markup.inline_keyboard[0][1].web_app.url).toMatch(/\/login$/);
 
     const secondCallBody = JSON.parse((fetchSpy.mock.calls[1][1] as any).body);
     expect(secondCallBody.reply_markup.is_persistent).toBe(true);
+    const mainButtonCount = secondCallBody.reply_markup.keyboard.flat().length;
+    expect(mainButtonCount).toBe(5);
+    fetchSpy.mockRestore();
+  });
+
+  it('should switch to 4 contextual buttons in Prices/Products and return to 5 buttons on Ortga qaytish', async () => {
+    const prodSpy = vi.spyOn(prisma.product, 'findMany').mockResolvedValue([
+      {
+        id: 'p-1',
+        name: 'Shokoladli tort',
+        price: 250000,
+        currency: 'UZS',
+        preparationTimeHours: 4,
+        description: 'Mazali tort',
+        seller: { storeName: 'SweetHome' },
+        category: { name: 'Cakes' },
+        images: [],
+      } as any,
+    ]);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      json: async () => ({ ok: true }),
+    } as any);
+
+    await TelegramBotRunner.handleUpdate('123456:TEST_TOKEN', {
+      update_id: 1001,
+      message: {
+        message_id: 3,
+        chat: { id: 777, type: 'private' },
+        from: { id: 777, is_bot: false, first_name: 'Ali' },
+        date: 1,
+        text: '💰 Narxlar',
+      },
+    });
+
+    const priceBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(priceBody.text).toContain('Shokoladli tort');
+    expect(priceBody.text).toContain('250');
+
+    const priceKbBody = JSON.parse((fetchSpy.mock.calls[1][1] as any).body);
+    const priceButtons = priceKbBody.reply_markup.keyboard.flat();
+    expect(priceButtons).toHaveLength(4);
+    expect(priceButtons.some((b: any) => b.text.includes('Ortga qaytish'))).toBe(true);
+
+    fetchSpy.mockClear();
+
+    await TelegramBotRunner.handleUpdate('123456:TEST_TOKEN', {
+      update_id: 1002,
+      message: {
+        message_id: 4,
+        chat: { id: 777, type: 'private' },
+        from: { id: 777, is_bot: false, first_name: 'Ali' },
+        date: 1,
+        text: '⬅️ Ortga qaytish',
+      },
+    });
+
+    const backKbBody = JSON.parse((fetchSpy.mock.calls[1][1] as any).body);
+    expect(backKbBody.reply_markup.keyboard.flat()).toHaveLength(5);
+
+    prodSpy.mockRestore();
     fetchSpy.mockRestore();
   });
 });
