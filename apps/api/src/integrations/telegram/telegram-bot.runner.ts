@@ -80,9 +80,9 @@ export class TelegramBotRunner {
         if (!setData.ok) {
           return { ok: false, webhookUrl: currentUrl, message: setData.description || 'setWebhook failed' };
         }
+        await Promise.all([this.setupCommands(token), this.setupMenuButton(token)]);
       }
 
-      await Promise.all([this.setupCommands(token), this.setupMenuButton(token)]);
       return { ok: true, webhookUrl: targetWebhookUrl, message: 'Telegram 24/7 webhook active' };
     } catch (err: any) {
       return { ok: false, message: err.message };

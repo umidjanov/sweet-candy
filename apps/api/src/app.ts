@@ -14,11 +14,12 @@ const app = express();
 // Trust Vercel / reverse-proxy headers so req.protocol & req.get('host') reflect HTTPS
 app.set('trust proxy', 1);
 
-// Security middleware (allow embedding inside Telegram WebView / iframe)
+// Security middleware (allow embedding inside Telegram WebView / iframe and cross-origin image access)
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     frameguard: false,
+    contentSecurityPolicy: false,
   })
 );
 

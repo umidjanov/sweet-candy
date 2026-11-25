@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { PrismaClient } from '@prisma/client';
 import { seedCategoriesAndSettings } from '../apps/api/src/utils/seed-defaults';
 
@@ -14,6 +15,13 @@ async function sync() {
     console.error('Usage: CLOUD_DATABASE_URL="postgresql://..." npm run db:sync-cloud');
     process.exit(1);
   }
+
+  console.log('🔧 Pushing Prisma schema to cloud DB...');
+  const schemaPath = path.resolve(__dirname, '../apps/api/prisma/schema.prisma');
+  execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
+    stdio: 'inherit',
+    env: { ...process.env, DATABASE_URL: cloudUrl },
+  });
 
   const local = new PrismaClient({ datasources: { db: { url: localUrl } } });
   const cloud = new PrismaClient({ datasources: { db: { url: cloudUrl } } });
