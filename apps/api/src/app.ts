@@ -87,6 +87,9 @@ async function buildHealthPayload() {
     databaseConfigured: isDatabaseConfigured,
     databaseConnected: dbConnected,
     telegramBotConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN),
+    detectedEnvKeys: Object.keys(process.env).filter((k) =>
+      /^(DATABASE|POSTGRES|STORAGE|NEON|TELEGRAM|ADMIN|JWT)_/i.test(k)
+    ),
     ...(dbError ? { dbError } : {}),
   };
 }

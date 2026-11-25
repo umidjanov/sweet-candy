@@ -45,3 +45,4 @@ export async function ensureAppReady(requestOrigin?: string): Promise<void> {
 
   await initPromise;
 }
+

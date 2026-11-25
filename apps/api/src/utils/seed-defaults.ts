@@ -193,3 +193,4 @@ export async function seedCategoriesAndSettings(prisma: PrismaClient) {
     });
   }
 }
+

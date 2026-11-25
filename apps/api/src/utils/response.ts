@@ -41,14 +41,21 @@ export function sendError(
   code = 'BAD_REQUEST',
   details?: any
 ): Response {
+  const isDbMissing = String(message || '').includes('Environment variable not found: DATABASE_URL');
+  const finalStatus = isDbMissing ? 503 : statusCode;
+  const finalCode = isDbMissing ? 'DATABASE_NOT_CONFIGURED' : code;
+  const finalMessage = isDbMissing
+    ? 'Vercel-da bulutli baza (DATABASE_URL) ulanmagan. Vercel -> Storage -> Neon Postgres ulab, Redeploy qiling.'
+    : message;
+
   const payload: ApiResponse = {
     success: false,
     error: {
-      code,
-      message,
+      code: finalCode,
+      message: finalMessage,
       ...(details && { details }),
     },
   };
-  return res.status(statusCode).json(payload);
+  return res.status(finalStatus).json(payload);
 }
 

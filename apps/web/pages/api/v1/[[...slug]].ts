@@ -11,3 +11,4 @@ export const config = {
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   return (app as any)(req, res);
 }
+

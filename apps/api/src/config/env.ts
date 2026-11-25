@@ -7,6 +7,25 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '../api/.env') });
 
+export function resolveDatabaseUrl(): string | undefined {
+  return (
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.STORAGE_PRISMA_URL ||
+    process.env.STORAGE_DATABASE_URL ||
+    process.env.STORAGE_POSTGRES_URL ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.DATABASE_POSTGRES_URL ||
+    undefined
+  );
+}
+
+const resolvedDbUrl = resolveDatabaseUrl();
+if (resolvedDbUrl && !process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = resolvedDbUrl;
+}
+
 function resolveVercelOrigin(): string | undefined {
   const prodHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
   if (prodHost) return `https://${prodHost.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
@@ -41,7 +60,7 @@ if (!parsed.success) {
   console.warn('⚠️ Environment configuration fallback active:', JSON.stringify(parsed.error.flatten().fieldErrors));
 }
 
-export const isDatabaseConfigured = Boolean(process.env.DATABASE_URL);
+export const isDatabaseConfigured = Boolean(resolveDatabaseUrl());
 export const isVercelRuntime = process.env.VERCEL === '1';
 
 export const env = parsed.success
