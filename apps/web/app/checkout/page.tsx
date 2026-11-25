@@ -17,15 +17,24 @@ import { useCart } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api';
 import { useTranslation } from '@/lib/i18n';
+import { useTelegram } from '@/components/telegram/telegram-provider';
+
+function getTomorrowIsoDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().split('T')[0];
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
-  const { groupedBySeller, clearCart } = useCart();
+  const { triggerHaptic } = useTelegram();
+  const { groupedBySeller, clearCart, isLoading: cartLoading } = useCart();
 
+  const minDate = getTomorrowIsoDate();
   const [deliveryType, setDeliveryType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
-  const [requestedDate, setRequestedDate] = useState('');
+  const [requestedDate, setRequestedDate] = useState(minDate);
   const [requestedTime, setRequestedTime] = useState('14:00 - 16:00');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -55,13 +64,38 @@ export default function CheckoutPage() {
     e.preventDefault();
     setError('');
 
+    if (!isAuthenticated) {
+      router.push('/login?redirect=/checkout');
+      return;
+    }
+
+    if (groupedBySeller.length === 0) {
+      setError(t.cart.emptyTitle || 'Savatchangiz bo‘sh');
+      triggerHaptic('medium');
+      return;
+    }
+
     if (!requestedDate) {
       setError(c.errSelectDate);
+      triggerHaptic('medium');
       return;
     }
 
     if (deliveryType === 'DELIVERY' && (!deliveryAddress || deliveryAddress.trim().length < 5)) {
       setError(c.errEnterAddress);
+      triggerHaptic('medium');
+      return;
+    }
+
+    if (!customerName || customerName.trim().length < 2) {
+      setError(c.fullNameLabel);
+      triggerHaptic('medium');
+      return;
+    }
+
+    if (!customerPhone || customerPhone.trim().length < 7) {
+      setError(c.contactPhoneLabel);
+      triggerHaptic('medium');
       return;
     }
 
@@ -80,29 +114,42 @@ export default function CheckoutPage() {
             requestedDate,
             requestedTime,
             deliveryType,
-            deliveryAddress: deliveryType === 'DELIVERY' ? deliveryAddress : undefined,
-            customerName,
-            customerPhone,
-            customerMessage,
+            deliveryAddress: deliveryType === 'DELIVERY' ? deliveryAddress.trim() : undefined,
+            customerName: customerName.trim(),
+            customerPhone: customerPhone.trim(),
+            customerMessage: customerMessage.trim() || undefined,
           }),
         });
       }
 
-      await clearCart();
+      try {
+        await clearCart();
+      } catch {
+        // Order already succeeded in DB; don't block redirect if cart cleanup fails
+      }
+      triggerHaptic('light');
       router.push('/account/orders?success=true');
     } catch (err: any) {
+      triggerHaptic('heavy');
       setError(err.message || c.errPlaceOrder);
     } finally {
       setLoading(false);
     }
   };
 
-  // Earliest date is tomorrow (homemade freshly baked prep time)
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split('T')[0];
-
   const fulfillmentLabel = deliveryType === 'DELIVERY' ? c.deliveryLabel : c.pickupLabel;
+
+  if (!authLoading && !cartLoading && groupedBySeller.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+        <h1 className="text-2xl font-black text-[#29252A]">{t.cart.emptyTitle}</h1>
+        <p className="text-sm text-[#817781]">{t.cart.emptyDesc}</p>
+        <Button variant="primary" onClick={() => router.push('/explore')}>
+          {t.cart.startShopping}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl 3xl:max-w-[1440px] mx-auto px-3 xs:px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-6 sm:space-y-8">
@@ -118,7 +165,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <form onSubmit={handlePlaceOrders} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <form noValidate onSubmit={handlePlaceOrders} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Step 1: Delivery or Pickup */}
           <div className="bg-white rounded-3xl border border-[#EEE6E9] p-6 shadow-soft space-y-4">
@@ -278,6 +325,13 @@ export default function CheckoutPage() {
                 <span className="text-base font-bold text-[#29252A]">{c.totalLabel}</span>
                 <span className="text-2xl font-black text-[#E85D8E]">{formatPrice(grandTotal)}</span>
               </div>
+
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
 
               <Button
                 type="submit"

@@ -95,7 +95,8 @@ export async function apiClient<T = any>(
         window.location.href = '/login?expired=1';
       }
     }
-    const errorMsg = data?.error?.message || response.statusText || 'Request failed';
+    const detailMsg = Array.isArray(data?.error?.details) ? data.error.details[0]?.message : undefined;
+    const errorMsg = detailMsg || data?.error?.message || response.statusText || 'Request failed';
     throw new ApiError(errorMsg, response.status, data?.error?.code, data?.error?.details);
   }
 

@@ -1,6 +1,8 @@
+import { OrderStatus } from '@prisma/client';
 import { prisma } from '../../config/database';
 import { env, getPublicAppUrl } from '../../config/env';
 import { TelegramService } from './telegram.service';
+import { OrderService } from '../../services/order.service';
 
 interface TelegramUpdate {
   update_id: number;
@@ -193,7 +195,7 @@ export class TelegramBotRunner {
    * Escapes Telegram legacy Markdown v1 special characters in dynamic user/product values.
    */
   private static escapeMarkdown(text: string): string {
-    return String(text || '').replace(/([_*`\[])/g, '\\$1');
+    return TelegramService.escapeMarkdown(text);
   }
 
   /**
@@ -526,6 +528,16 @@ export class TelegramBotRunner {
 
       if (!chatId || !data) return;
 
+      // Handle Seller order action callbacks directly inside Telegram
+      if (
+        data.startsWith('order_accept:') ||
+        data.startsWith('order_reject:') ||
+        data.startsWith('order_status:')
+      ) {
+        await this.handleSellerOrderCallback(token, cb, data);
+        return;
+      }
+
       await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -541,6 +553,137 @@ export class TelegramBotRunner {
       } else if (data === 'open_main') {
         await this.sendWelcomeMessage(token, chatId, cb.from?.first_name || 'Mehmon');
       }
+    }
+  }
+
+  /**
+   * Handles inline seller actions ("✅ Qabul qilish", "❌ Rad etish", and lifecycle transitions)
+   */
+  private static async handleSellerOrderCallback(
+    token: string,
+    cb: NonNullable<TelegramUpdate['callback_query']>,
+    data: string
+  ) {
+    const chatId = cb.message?.chat.id;
+    const messageId = cb.message?.message_id;
+    if (!chatId) return;
+
+    const answerCb = async (text: string, showAlert = false) => {
+      await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callback_query_id: cb.id, text, show_alert: showAlert }),
+      });
+    };
+
+    try {
+      let orderId = '';
+      let targetStatus: OrderStatus = 'ACCEPTED';
+      let note = '';
+
+      if (data.startsWith('order_accept:')) {
+        orderId = data.replace('order_accept:', '').trim();
+        targetStatus = 'ACCEPTED';
+        note = 'Telegram bot orqali qabul qilindi';
+      } else if (data.startsWith('order_reject:')) {
+        orderId = data.replace('order_reject:', '').trim();
+        targetStatus = 'REJECTED';
+        note = 'Sotuvchi tomonidan Telegram orqali rad etildi';
+      } else if (data.startsWith('order_status:')) {
+        const [, id, statusStr] = data.split(':');
+        orderId = id || '';
+        targetStatus = statusStr as OrderStatus;
+        note = `Telegram bot orqali holat ${targetStatus} ga o‘zgartirildi`;
+      }
+
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: { seller: true },
+      });
+
+      if (!order) {
+        await answerCb('Buyurtma topilmadi.', true);
+        return;
+      }
+
+      if (!order.seller.telegramChatId || order.seller.telegramChatId.toString() !== String(chatId)) {
+        await answerCb('Bu buyurtmani faqat bog‘langan do‘kon egasi boshqara oladi.', true);
+        return;
+      }
+
+      await OrderService.updateOrderStatus(
+        order.id,
+        targetStatus,
+        order.seller.userId,
+        order.sellerId,
+        false,
+        targetStatus === 'REJECTED' ? { rejectionReason: note } : { sellerNotes: note }
+      );
+
+      const webAppUrl = this.getWebAppBaseUrl();
+      const statusMessages: Record<string, string> = {
+        ACCEPTED: `✅ Buyurtma #${order.orderNumber} qabul qilindi!`,
+        PREPARING: `👨‍🍳 Buyurtma #${order.orderNumber} tayyorlanmoqda!`,
+        READY: `📦 Buyurtma #${order.orderNumber} tayyor!`,
+        OUT_FOR_DELIVERY: `🚚 Buyurtma #${order.orderNumber} yetkazilmoqda!`,
+        COMPLETED: `🎉 Buyurtma #${order.orderNumber} tugatildi!`,
+        REJECTED: `❌ Buyurtma #${order.orderNumber} rad etildi.`,
+      };
+
+      const toastMsg = statusMessages[targetStatus] || `Holat yangilandi: ${targetStatus}`;
+      await answerCb(toastMsg);
+
+      const nextInlineKeyboard =
+        targetStatus === 'COMPLETED' || targetStatus === 'REJECTED' || targetStatus === 'CANCELLED'
+          ? {
+              inline_keyboard: [
+                [
+                  {
+                    text: '📋 Saytda buyurtmani ko‘rish',
+                    web_app: { url: `${webAppUrl}/seller/orders/${order.id}` },
+                  },
+                ],
+              ],
+            }
+          : {
+              inline_keyboard: [
+                [
+                  ...(targetStatus === 'ACCEPTED'
+                    ? [{ text: '👨‍🍳 Tayyorlanmoqda', callback_data: `order_status:${order.id}:PREPARING` }]
+                    : []),
+                  ...(targetStatus === 'ACCEPTED' || targetStatus === 'PREPARING'
+                    ? [{ text: '📦 Tayyor', callback_data: `order_status:${order.id}:READY` }]
+                    : []),
+                  { text: '🚚 Yetkazildi (Tugatish)', callback_data: `order_status:${order.id}:COMPLETED` },
+                ],
+                [
+                  {
+                    text: '📋 Saytda boshqarish',
+                    web_app: { url: `${webAppUrl}/seller/orders/${order.id}` },
+                  },
+                ],
+              ],
+            };
+
+      if (messageId) {
+        await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: nextInlineKeyboard,
+          }),
+        });
+      }
+
+      await this.sendMessageWithMarkup(
+        token,
+        chatId,
+        `${toastMsg}\nSaytdagi buyurtmalar bo‘limida ham holat avtomatik yangilandi.`
+      );
+    } catch (err: any) {
+      await answerCb(err?.message || 'Holatni yangilashda xatolik', true);
     }
   }
 

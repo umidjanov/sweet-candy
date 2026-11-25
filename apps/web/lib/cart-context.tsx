@@ -52,14 +52,14 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isCustomer } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
   const [groupedBySeller, setGroupedBySeller] = useState<SellerGroup[]>([]);
   const [totalAmount, setTotalAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const refreshCart = async () => {
-    if (!isAuthenticated || !isCustomer) {
+    if (!isAuthenticated) {
       setItems([]);
       setGroupedBySeller([]);
       setTotalAmount(0);
@@ -86,7 +86,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshCart();
-  }, [isAuthenticated, isCustomer]);
+  }, [isAuthenticated]);
 
   const addToCart = async (productId: string, quantity = 1) => {
     if (!isAuthenticated) {

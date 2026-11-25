@@ -3,6 +3,13 @@ import { prisma } from '../../config/database';
 import { env, getPublicAppUrl } from '../../config/env';
 
 export class TelegramService {
+  /**
+   * Escapes Telegram legacy Markdown v1 special characters in dynamic values.
+   */
+  static escapeMarkdown(text: string): string {
+    return String(text || '').replace(/([_*`\[])/g, '\\$1');
+  }
+
   private static getBotToken(): string {
     return process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || '';
   }
@@ -122,7 +129,10 @@ export class TelegramService {
       }
 
       const itemsSummary = order.items
-        .map((item) => `• ${item.productNameSnapshot} x${item.quantity} (${Number(item.lineTotal).toLocaleString()} ${order.currency})`)
+        .map(
+          (item) =>
+            `• ${this.escapeMarkdown(item.productNameSnapshot)} x${item.quantity} (${Number(item.lineTotal).toLocaleString()} ${order.currency})`
+        )
         .join('\n');
 
       const formattedTotal = Number(order.total).toLocaleString('ru-RU');
@@ -133,28 +143,32 @@ export class TelegramService {
       });
 
       const messageText =
-        `🔔 *YANGI BUYURTMA — Sweet CANDY*\n` +
+        `🔔 *SIZGA YANGI BUYURTMA KELDI — Sweet CANDY*\n` +
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `*Buyurtma raqami:* #${order.orderNumber}\n` +
-        `*Xaridor:* ${order.customerName}\n` +
-        `*Telefon:* ${order.customerPhone}\n\n` +
+        `*Buyurtma raqami:* #${this.escapeMarkdown(order.orderNumber)}\n` +
+        `*Xaridor:* ${this.escapeMarkdown(order.customerName)}\n` +
+        `*Telefon:* ${this.escapeMarkdown(order.customerPhone)}\n\n` +
         `*Buyurtma tarkibi:*\n${itemsSummary}\n\n` +
-        `*Yetkazish sanasi:* ${formattedDate}\n` +
-        `*Yetkazish vaqti:* ${order.requestedTime}\n` +
+        `*Yetkazish sanasi:* ${this.escapeMarkdown(formattedDate)}\n` +
+        `*Yetkazish vaqti:* ${this.escapeMarkdown(order.requestedTime)}\n` +
         `*Yetkazish turi:* ${order.deliveryType === 'DELIVERY' ? '🚚 Yetkazib berish' : '🏪 Olib ketish'}\n` +
-        (order.deliveryAddress ? `*Yetkazish manzili:* ${order.deliveryAddress}\n` : '') +
+        (order.deliveryAddress ? `*Yetkazish manzili:* ${this.escapeMarkdown(order.deliveryAddress)}\n` : '') +
         `*Jami summa:* ${formattedTotal} ${order.currency}\n` +
-        (order.customerMessage ? `*Mijoz izohi:* "${order.customerMessage}"\n` : '') +
+        (order.customerMessage ? `*Mijoz izohi:* "${this.escapeMarkdown(order.customerMessage)}"\n` : '') +
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `Buyurtmani qabul qilish yoki holatini o'zgartirish uchun quyidagi tugmani bosing 👇`;
+        `Buyurtmani qabul qilish yoki boshqarish uchun quyidagi tugmalardan foydalaning 👇`;
 
       const appUrl = getPublicAppUrl();
 
       const replyMarkup = {
         inline_keyboard: [
           [
+            { text: '✅ Qabul qilish', callback_data: `order_accept:${order.id}` },
+            { text: '❌ Rad etish', callback_data: `order_reject:${order.id}` },
+          ],
+          [
             {
-              text: '📋 Buyurtmani boshqarish (Web App)',
+              text: '📋 Buyurtmani boshqarish (Sayt)',
               web_app: { url: `${appUrl}/seller/orders/${order.id}` },
             },
           ],
@@ -241,7 +255,20 @@ export class TelegramService {
         }),
       });
 
-      return await response.json();
+      const data = await response.json();
+      if (!data.ok && String(data.description || '').includes('parse entities')) {
+        const fallbackRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId.toString(),
+            text: text.replace(/[*_`]/g, ''),
+            reply_markup: replyMarkup,
+          }),
+        });
+        return await fallbackRes.json();
+      }
+      return data;
     } catch (error: any) {
       return { ok: false, description: error.message };
     }

@@ -6,8 +6,8 @@ import { createOrderSchema, updateOrderStatusSchema } from '../validators/order.
 
 const router = Router();
 
-router.post('/', authenticate, requireRole('CUSTOMER'), validate({ body: createOrderSchema }), OrderController.create);
-router.get('/my', authenticate, requireRole('CUSTOMER'), OrderController.getMyOrders);
+router.post('/', authenticate, requireRole('CUSTOMER', 'SELLER', 'ADMIN'), validate({ body: createOrderSchema }), OrderController.create);
+router.get('/my', authenticate, requireRole('CUSTOMER', 'SELLER', 'ADMIN'), OrderController.getMyOrders);
 router.get('/seller', authenticate, requireRole('SELLER'), OrderController.getSellerOrders);
 router.get('/:id', authenticate, OrderController.getById);
 router.patch('/:id/status', authenticate, validate({ body: updateOrderStatusSchema }), OrderController.updateStatus);

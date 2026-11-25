@@ -5,6 +5,7 @@ import { createOrderSchema } from '../src/validators/order.validator';
 import { TelegramService } from '../src/integrations/telegram/telegram.service';
 import { TelegramBotRunner } from '../src/integrations/telegram/telegram-bot.runner';
 import { TelegramController } from '../src/controllers/telegram.controller';
+import { OrderService } from '../src/services/order.service';
 import { prisma } from '../src/config/database';
 
 describe('SweetMarket Product, Order & Telegram Tests', () => {
@@ -187,6 +188,78 @@ describe('SweetMarket Product, Order & Telegram Tests', () => {
     expect(backKbBody.reply_markup.keyboard.flat()).toHaveLength(5);
 
     prodSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  it('should send seller notification with Qabul qilish button and accept order on callback', async () => {
+    process.env.TELEGRAM_BOT_TOKEN = '123456:TEST_TOKEN';
+
+    const orderSpy = vi.spyOn(prisma.order, 'findUnique').mockResolvedValue({
+      id: 'ord-1',
+      orderNumber: 'SM-2611-0001',
+      sellerId: 'sel-1',
+      customerName: 'Dilnoza_K',
+      customerPhone: '+998901112233',
+      requestedDate: new Date('2026-12-01'),
+      requestedTime: '14:00 - 16:00',
+      deliveryType: 'DELIVERY',
+      deliveryAddress: 'Chilonzor 5',
+      total: 275000,
+      currency: 'UZS',
+      customerMessage: null,
+      items: [{ productNameSnapshot: 'napalion', quantity: 1, lineTotal: 250000 }],
+      seller: {
+        id: 'sel-1',
+        userId: 'user-sel-1',
+        telegramConnected: true,
+        telegramChatId: BigInt(555000),
+      },
+    } as any);
+    const notifFindSpy = vi.spyOn(prisma.telegramNotification, 'findFirst').mockResolvedValue(null);
+    const notifCreateSpy = vi.spyOn(prisma.telegramNotification, 'create').mockResolvedValue({ id: 'log-1' } as any);
+    const notifUpdateSpy = vi.spyOn(prisma.telegramNotification, 'update').mockResolvedValue({ id: 'log-1' } as any);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      json: async () => ({ ok: true }),
+    } as any);
+
+    const notifyRes = await TelegramService.sendOrderNotification('ord-1');
+    expect(notifyRes.delivered).toBe(true);
+
+    const sendBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(sendBody.text).toContain('SIZGA YANGI BUYURTMA KELDI');
+    expect(sendBody.text).toContain('Dilnoza\\_K');
+    expect(sendBody.reply_markup.inline_keyboard[0][0].text).toContain('Qabul qilish');
+    expect(sendBody.reply_markup.inline_keyboard[0][0].callback_data).toBe('order_accept:ord-1');
+    expect(sendBody.reply_markup.inline_keyboard[0][1].callback_data).toBe('order_reject:ord-1');
+
+    fetchSpy.mockClear();
+    const updateStatusSpy = vi.spyOn(OrderService, 'updateOrderStatus').mockResolvedValue({ id: 'ord-1', status: 'ACCEPTED' } as any);
+
+    await TelegramBotRunner.handleUpdate('123456:TEST_TOKEN', {
+      update_id: 2001,
+      callback_query: {
+        id: 'cb-1',
+        from: { id: 555000, first_name: 'Baker' },
+        message: { message_id: 88, chat: { id: 555000 } },
+        data: 'order_accept:ord-1',
+      },
+    });
+
+    expect(updateStatusSpy).toHaveBeenCalledWith(
+      'ord-1',
+      'ACCEPTED',
+      'user-sel-1',
+      'sel-1',
+      false,
+      { sellerNotes: 'Telegram bot orqali qabul qilindi' }
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(3); // answerCallbackQuery + editMessageReplyMarkup + confirmation sendMessage
+
+    orderSpy.mockRestore();
+    notifFindSpy.mockRestore();
+    notifCreateSpy.mockRestore();
+    notifUpdateSpy.mockRestore();
+    updateStatusSpy.mockRestore();
     fetchSpy.mockRestore();
   });
 });

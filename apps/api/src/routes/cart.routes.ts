@@ -4,7 +4,7 @@ import { authenticate, requireRole } from '../middleware/auth';
 
 const router = Router();
 
-router.use(authenticate, requireRole('CUSTOMER'));
+router.use(authenticate, requireRole('CUSTOMER', 'SELLER', 'ADMIN'));
 router.get('/', CartController.getCart);
 router.post('/items', CartController.addItem);
 router.patch('/items/:id', CartController.updateItem);
