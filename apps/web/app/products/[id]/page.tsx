@@ -98,7 +98,7 @@ function ProductDetailContent() {
 
   // Auto-open pre-order modal if ?preorder=1 and authenticated
   useEffect(() => {
-    if (!loading && product && searchParams.get('preorder') === '1' && isAuthenticated) {
+    if (!loading && product && searchParams?.get('preorder') === '1' && isAuthenticated) {
       if (product.availabilityStatus !== 'UNAVAILABLE') {
         setPreOrderModalOpen(true);
       }

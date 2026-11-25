@@ -19,7 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 
 export const TelegramNavBar: React.FC = () => {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const { user, isAuthenticated, isSeller, isAdmin } = useAuth();
   const { itemCount } = useCart();
   const { triggerHaptic } = useTelegram();

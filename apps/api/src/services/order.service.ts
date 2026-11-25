@@ -154,10 +154,12 @@ export class OrderService {
       return order;
     });
 
-    // 5. Asynchronous Telegram dispatch (non-blocking so Telegram errors don't roll back the DB transaction)
-    TelegramService.sendOrderNotification(newOrder.id).catch((err) => {
+    // 5. Dispatch Telegram notification before returning (awaited inside try/catch so serverless environments deliver reliably)
+    try {
+      await TelegramService.sendOrderNotification(newOrder.id);
+    } catch (err) {
       console.error(`Telegram notification error for order ${newOrder.id}:`, err);
-    });
+    }
 
     return newOrder;
   }

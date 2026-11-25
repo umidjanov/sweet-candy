@@ -22,7 +22,7 @@ import { useTranslation } from '@/lib/i18n';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 export const SellerSidebar: React.FC = () => {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const { t } = useTranslation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 

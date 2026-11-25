@@ -178,13 +178,15 @@ export class ProductService {
       throw new Error('Product not found or unavailable');
     }
 
-    // Increment views asynchronously
-    prisma.product
-      .update({
+    // Increment views safely (awaited in try/catch for serverless reliability)
+    try {
+      await prisma.product.update({
         where: { id },
         data: { viewsCount: { increment: 1 } },
-      })
-      .catch(() => {});
+      });
+    } catch {
+      // Ignore view count failures
+    }
 
     return {
       ...product,

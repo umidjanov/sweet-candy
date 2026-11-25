@@ -2,17 +2,23 @@ function getApiBase(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_URL;
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-  // If running in browser on HTTPS (e.g. Vercel deployment, Telegram Web App),
-  // localhost cannot be reached due to browser Mixed Content security rules.
+  // When running over HTTPS (Vercel Web App / Telegram Mini App):
+  // Use an explicit cloud API domain if configured, otherwise call same-origin /api/v1 directly (24/7, zero tunnels!).
   if (isHttps) {
-    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+    if (
+      envUrl &&
+      envUrl.startsWith('https://') &&
+      !envUrl.includes('localhost') &&
+      !envUrl.includes('127.0.0.1') &&
+      !envUrl.includes('trycloudflare.com') &&
+      !envUrl.includes('loca.lt')
+    ) {
       return envUrl.replace(/\/+$/, '');
     }
-    // Active Cloudflare Tunnel connection
-    return 'https://conviction-life-oven-samples.trycloudflare.com/api/v1';
+    return '/api/v1';
   }
 
-  if (envUrl) {
+  if (envUrl && !envUrl.includes('trycloudflare.com') && !envUrl.includes('loca.lt')) {
     return envUrl.replace(/\/+$/, '');
   }
   return 'http://localhost:4000/api/v1';

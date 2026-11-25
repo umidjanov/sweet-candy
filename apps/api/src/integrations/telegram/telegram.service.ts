@@ -1,10 +1,15 @@
 import crypto from 'crypto';
 import { prisma } from '../../config/database';
-import { env } from '../../config/env';
+import { env, getPublicAppUrl } from '../../config/env';
 
 export class TelegramService {
-  private static botToken = env.TELEGRAM_BOT_TOKEN;
-  private static botUsername = env.TELEGRAM_BOT_USERNAME;
+  private static getBotToken(): string {
+    return process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || '';
+  }
+
+  private static getBotUsername(): string {
+    return (process.env.TELEGRAM_BOT_USERNAME || env.TELEGRAM_BOT_USERNAME || 'sweet_candy_uz_bot').replace(/^@/, '');
+  }
 
   /**
    * Generates a 15-minute one-time cryptographic token for seller connection
@@ -27,7 +32,7 @@ export class TelegramService {
       },
     });
 
-    const botUrl = `https://t.me/${this.botUsername}?start=${token}`;
+    const botUrl = `https://t.me/${this.getBotUsername()}?start=${token}`;
     return { token, botUrl };
   }
 
@@ -143,9 +148,7 @@ export class TelegramService {
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
         `Buyurtmani qabul qilish yoki holatini o'zgartirish uchun quyidagi tugmani bosing 👇`;
 
-      const appUrl = (env.NEXT_PUBLIC_APP_URL && env.NEXT_PUBLIC_APP_URL.startsWith('https://'))
-        ? env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')
-        : 'https://sweet-candy-ten.vercel.app';
+      const appUrl = getPublicAppUrl();
 
       const replyMarkup = {
         inline_keyboard: [
@@ -168,8 +171,10 @@ export class TelegramService {
         },
       });
 
+      const botToken = this.getBotToken();
+
       // If no BOT token is configured, log in development mode
-      if (!this.botToken) {
+      if (!botToken) {
         console.warn(`[Telegram Simulator] No TELEGRAM_BOT_TOKEN set. Notification logged for chat ${order.seller.telegramChatId}`);
         await prisma.telegramNotification.update({
           where: { id: notificationLog.id },
@@ -218,12 +223,13 @@ export class TelegramService {
     text: string,
     replyMarkup?: any
   ): Promise<{ ok: boolean; description?: string }> {
-    if (!this.botToken) {
+    const botToken = this.getBotToken();
+    if (!botToken) {
       return { ok: false, description: 'Telegram Bot Token not configured' };
     }
 
     try {
-      const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
+      const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

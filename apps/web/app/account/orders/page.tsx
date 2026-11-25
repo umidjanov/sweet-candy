@@ -14,7 +14,7 @@ import { useTranslation } from '@/lib/i18n';
 function OrdersContent() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const showSuccessBanner = searchParams.get('success') === 'true';
+  const showSuccessBanner = searchParams?.get('success') === 'true';
 
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

@@ -20,13 +20,13 @@ function ExploreContent() {
   const [meta, setMeta] = useState<any>({ page: 1, total: 0, totalPages: 1 });
 
   // Filters state
-  const [q, setQ] = useState(searchParams.get('q') || '');
-  const [categoryId, setCategoryId] = useState(searchParams.get('categoryId') || '');
-  const [minPrice, setMinPrice] = useState(searchParams.get('minPrice') || '');
-  const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
-  const [sort, setSort] = useState(searchParams.get('sort') || 'newest');
-  const [city, setCity] = useState(searchParams.get('city') || '');
-  const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
+  const [q, setQ] = useState(searchParams?.get('q') || '');
+  const [categoryId, setCategoryId] = useState(searchParams?.get('categoryId') || '');
+  const [minPrice, setMinPrice] = useState(searchParams?.get('minPrice') || '');
+  const [maxPrice, setMaxPrice] = useState(searchParams?.get('maxPrice') || '');
+  const [sort, setSort] = useState(searchParams?.get('sort') || 'newest');
+  const [city, setCity] = useState(searchParams?.get('city') || '');
+  const [page, setPage] = useState(Number(searchParams?.get('page')) || 1);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   useEffect(() => {

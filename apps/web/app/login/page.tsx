@@ -13,8 +13,8 @@ import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
-  const isExpired = searchParams.get('expired') === '1';
+  const redirect = searchParams?.get('redirect') || '/';
+  const isExpired = searchParams?.get('expired') === '1';
 
   const { login } = useAuth();
   const { t } = useTranslation();

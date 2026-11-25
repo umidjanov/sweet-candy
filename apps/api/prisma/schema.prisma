@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -487,5 +488,16 @@ model PlatformSetting {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("platform_settings")
+}
+
+model UploadedFile {
+  id        String   @id @default(uuid())
+  filename  String   @unique
+  mimeType  String   @map("mime_type")
+  data      Bytes
+  size      Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("uploaded_files")
 }
 

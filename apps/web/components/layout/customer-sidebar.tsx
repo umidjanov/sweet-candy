@@ -17,7 +17,7 @@ import {
 import { useTranslation } from '@/lib/i18n';
 
 export const CustomerSidebar: React.FC = () => {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const { t } = useTranslation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 

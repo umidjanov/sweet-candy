@@ -3,6 +3,8 @@ import { generateOrderNumber } from '../src/utils/order-number';
 import { createProductSchema } from '../src/validators/product.validator';
 import { createOrderSchema } from '../src/validators/order.validator';
 import { TelegramService } from '../src/integrations/telegram/telegram.service';
+import { TelegramBotRunner } from '../src/integrations/telegram/telegram-bot.runner';
+import { TelegramController } from '../src/controllers/telegram.controller';
 import { prisma } from '../src/config/database';
 
 describe('SweetMarket Product, Order & Telegram Tests', () => {
@@ -77,5 +79,26 @@ describe('SweetMarket Product, Order & Telegram Tests', () => {
     const result = await TelegramService.handleTelegramStartCommand(12345678, 'test-nonexistent-token');
     expect(result.success).toBe(false);
     expect(result.message).toContain('Invalid or unrecognized');
+  });
+
+  it('should dispatch webhook updates through TelegramBotRunner in serverless webhook handler', async () => {
+    process.env.TELEGRAM_BOT_TOKEN = '123456:TEST_TOKEN';
+    const handleSpy = vi.spyOn(TelegramBotRunner, 'handleUpdate').mockResolvedValue(undefined);
+
+    const jsonMock = vi.fn();
+    const res = { status: vi.fn().mockReturnValue({ json: jsonMock }) } as any;
+    const req = {
+      body: {
+        update_id: 999,
+        message: { message_id: 1, chat: { id: 42 }, from: { id: 42, is_bot: false, first_name: 'Ali' }, date: 1, text: '/start' },
+      },
+    } as any;
+
+    await TelegramController.handleWebhook(req, res, vi.fn());
+
+    expect(handleSpy).toHaveBeenCalledWith('123456:TEST_TOKEN', req.body);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(jsonMock).toHaveBeenCalledWith({ ok: true });
+    handleSpy.mockRestore();
   });
 });

@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { TelegramService } from '../integrations/telegram/telegram.service';
+import { TelegramBotRunner } from '../integrations/telegram/telegram-bot.runner';
 import { sendSuccess, sendError } from '../utils/response';
 import { prisma } from '../config/database';
+import { env, getPublicApiOrigin } from '../config/env';
 
 export class TelegramController {
   static async getConnectToken(req: Request, res: Response, next: NextFunction) {
@@ -61,30 +63,68 @@ export class TelegramController {
   }
 
   /**
-   * Webhook endpoint called by Telegram Bot or local verification
-   * Handles `/start <token>` payload
+   * Public Telegram Bot Webhook endpoint for 24/7 serverless operation.
+   * Handles all bot commands, menu buttons, callbacks, and seller deep-linking.
    */
-  static async handleWebhook(req: Request, res: Response, next: NextFunction) {
+  static async handleWebhook(req: Request, res: Response, _next: NextFunction) {
     try {
-      const message = req.body?.message;
-      if (!message || !message.text) {
+      const update = req.body;
+      const token = process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
+
+      if (!update || (!update.message && !update.callback_query)) {
         return res.status(200).json({ ok: true });
       }
 
-      const text = message.text.trim();
-      const chatId = message.chat.id;
-
-      if (text.startsWith('/start ')) {
-        const token = text.replace('/start ', '').trim();
-        const result = await TelegramService.handleTelegramStartCommand(chatId, token);
-        return res.status(200).json({ ok: true, result });
+      if (!token) {
+        // Fallback: still process seller /start <token> deep links if bot token isn't configured
+        const text = update.message?.text?.trim() || '';
+        const chatId = update.message?.chat?.id;
+        if (chatId && text.startsWith('/start ')) {
+          const connToken = text.replace('/start ', '').trim();
+          const result = await TelegramService.handleTelegramStartCommand(chatId, connToken);
+          return res.status(200).json({ ok: true, result });
+        }
+        return res.status(200).json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not configured' });
       }
 
+      await TelegramBotRunner.handleUpdate(token, update);
       return res.status(200).json({ ok: true });
     } catch (err: any) {
       console.error('Telegram webhook error:', err);
+      // Always return 200 to Telegram so it doesn't endlessly retry a malformed update
       return res.status(200).json({ ok: false, error: err.message });
     }
   }
-}
 
+  /**
+   * Syncs/registers Telegram Webhook, slash commands, and Web App menu button for the active cloud origin.
+   */
+  static async syncWebhook(req: Request, res: Response) {
+    const forwardedProto = req.get('x-forwarded-proto');
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const origin =
+      host && !host.includes('localhost') && !host.includes('127.0.0.1')
+        ? `${forwardedProto || 'https'}://${host}`
+        : getPublicApiOrigin();
+
+    const result = await TelegramBotRunner.ensureWebhook(origin);
+    return sendSuccess(res, result, result.message, result.ok ? 200 : 400);
+  }
+
+  /**
+   * Reports live Telegram getWebhookInfo status.
+   */
+  static async getWebhookInfo(_req: Request, res: Response) {
+    const token = process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      return sendError(res, 'TELEGRAM_BOT_TOKEN not configured', 400, 'BOT_TOKEN_MISSING');
+    }
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
+      const data = await response.json();
+      return sendSuccess(res, data.result || data);
+    } catch (err: any) {
+      return sendError(res, err.message, 500, 'WEBHOOK_INFO_FAILED');
+    }
+  }
+}

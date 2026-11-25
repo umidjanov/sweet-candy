@@ -1,7 +1,6 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 import { env } from '../config/env';
 
 export const uploadDir = process.env.VERCEL
@@ -16,18 +15,6 @@ try {
   console.warn('Upload directory creation warning:', err);
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const rawExt = path.extname(file.originalname).toLowerCase();
-    const ext = rawExt && /^\.[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : '.jpg';
-    const safeName = `${uuidv4()}${ext}`;
-    cb(null, safeName);
-  },
-});
-
 const fileFilter = (
   _req: any,
   file: Express.Multer.File,
@@ -40,8 +27,9 @@ const fileFilter = (
   }
 };
 
+// Use memory storage so files can be persisted in PostgreSQL (works identically in serverless & local dev)
 export const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB per image
     files: 10,

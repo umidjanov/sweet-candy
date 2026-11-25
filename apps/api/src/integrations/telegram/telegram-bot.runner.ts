@@ -1,5 +1,5 @@
 import { prisma } from '../../config/database';
-import { env } from '../../config/env';
+import { env, getPublicAppUrl } from '../../config/env';
 import { TelegramService } from './telegram.service';
 
 interface TelegramUpdate {
@@ -50,10 +50,50 @@ export class TelegramBotRunner {
   private static pollingAbortController: AbortController | null = null;
 
   /**
-   * Initializes and starts the Telegram Bot polling loop
+   * Ensures Telegram Webhook, bot slash commands, and Web App menu button are registered for 24/7 serverless mode.
+   */
+  public static async ensureWebhook(apiOrigin: string): Promise<{ ok: boolean; webhookUrl?: string; message: string }> {
+    const token = process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      return { ok: false, message: 'TELEGRAM_BOT_TOKEN is not configured' };
+    }
+
+    const cleanOrigin = apiOrigin.replace(/\/+$/, '');
+    const targetWebhookUrl = `${cleanOrigin}/api/v1/telegram/webhook`;
+
+    try {
+      const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
+      const infoData = await infoRes.json();
+
+      const currentUrl: string = infoData?.result?.url || '';
+      if (currentUrl !== targetWebhookUrl) {
+        const setRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: targetWebhookUrl,
+            allowed_updates: ['message', 'callback_query'],
+            drop_pending_updates: false,
+          }),
+        });
+        const setData = await setRes.json();
+        if (!setData.ok) {
+          return { ok: false, webhookUrl: currentUrl, message: setData.description || 'setWebhook failed' };
+        }
+      }
+
+      await Promise.all([this.setupCommands(token), this.setupMenuButton(token)]);
+      return { ok: true, webhookUrl: targetWebhookUrl, message: 'Telegram 24/7 webhook active' };
+    } catch (err: any) {
+      return { ok: false, message: err.message };
+    }
+  }
+
+  /**
+   * Initializes and starts the Telegram Bot polling loop (for local dev only when cloud webhook isn't active)
    */
   static async start(): Promise<void> {
-    const token = env.TELEGRAM_BOT_TOKEN;
+    const token = process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
 
     if (!token) {
       console.log('----------------------------------------------------');
@@ -62,6 +102,21 @@ export class TelegramBotRunner {
       console.log('ℹ️ Bot tokeningizni Telegram-dagi @BotFather orqali olishingiz mumkin.');
       console.log('----------------------------------------------------');
       return;
+    }
+
+    // Do not hijack an active 24/7 cloud HTTPS webhook from local laptop polling unless explicitly forced
+    if (process.env.TELEGRAM_FORCE_POLLING !== 'true') {
+      try {
+        const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
+        const infoData = await infoRes.json();
+        const activeWebhook: string = infoData?.result?.url || '';
+        if (activeWebhook && activeWebhook.startsWith('https://') && !activeWebhook.includes('trycloudflare.com') && !activeWebhook.includes('loca.lt')) {
+          console.log(`🤖 [Telegram Bot] 24/7 Cloud Webhook allaqachon aktiv (${activeWebhook}). Lokal polling o'tkazib yuborildi.`);
+          return;
+        }
+      } catch {
+        // Continue to polling check
+      }
     }
 
     if (this.isRunning) {
@@ -153,12 +208,8 @@ export class TelegramBotRunner {
   /**
    * Helper to resolve the active HTTPS Web App URL
    */
-  private static getWebAppBaseUrl(): string {
-    const url = env.NEXT_PUBLIC_APP_URL || 'https://sweet-candy-ten.vercel.app';
-    if (!url.startsWith('https://')) {
-      return 'https://sweet-candy-ten.vercel.app';
-    }
-    return url.replace(/\/+$/, '');
+  public static getWebAppBaseUrl(): string {
+    return getPublicAppUrl();
   }
 
   /**
@@ -220,9 +271,9 @@ export class TelegramBotRunner {
   }
 
   /**
-   * Dispatches incoming Telegram updates
+   * Dispatches incoming Telegram updates (called by both Webhook in cloud and Polling locally)
    */
-  private static async handleUpdate(token: string, update: TelegramUpdate) {
+  public static async handleUpdate(token: string, update: TelegramUpdate) {
     if (update.message) {
       const msg = update.message;
       const chatId = msg.chat.id;
